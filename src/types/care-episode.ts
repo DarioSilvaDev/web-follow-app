@@ -240,3 +240,48 @@ export interface CreateOwnerCareEpisodeResult extends CareEpisode {
   attachments: CareEpisodeAttachment[];
   attachmentCount: number;
 }
+
+// ---------------------------------------------------------------------------
+// F-023 — Listado de atenciones del taller (GET /api/care-episodes)
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/care-episodes — item del listado de atenciones del taller (F-023
+ * RF-4). Sin PII del propietario (D-F023-2) y sin campos internos
+ * (internalNotes / customerComplaint / customerNotes): el `select` del
+ * backend es explícito y excluye cualquier campo no listado.
+ */
+export interface CareEpisodeListItem {
+  id: string;
+  vehicleId: string;
+  title: string | null;
+  status: "open" | "delivered" | "cancelled";
+  source: CareEpisodeSource;
+  verification: CareEpisodeVerification;
+  /**
+   * Fecha canónica D-070 pre-computada por el backend
+   * (serviceDate ?? checkedInAt ?? createdAt). Siempre ISO no-null.
+   */
+  canonicalDate: string;
+  mileageIn: number | null;
+  vehicle: {
+    licensePlate: string;
+    brand: string | null;
+    model: string | null;
+    manufactureYear: number | null;
+  };
+}
+
+/** Envelope meta, idéntico al patrón admin/vehicles. */
+export interface CareEpisodeListMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+/** GET /api/care-episodes → { data, meta }. */
+export interface CareEpisodeListResponse {
+  data: CareEpisodeListItem[];
+  meta: CareEpisodeListMeta;
+}

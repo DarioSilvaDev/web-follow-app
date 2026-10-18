@@ -22,9 +22,16 @@ const NAV_ITEMS_BASE = [
 ] as const;
 
 const NAV_ITEMS_WORKSHOP = [
+  // F-023 RF-6: orden Atenciones → Nueva atención → Verificaciones.
+  { href: "/atenciones", label: "Atenciones" },
   { href: "/atenciones/nueva", label: "Nueva atención" },
   { href: "/atenciones/verificaciones", label: "Verificaciones" },
 ] as const;
+
+// Hrefs que se activan SOLO en match exacto del pathname (RF-6): evita que
+// "Atenciones" (/atenciones) se marque activa dentro de /atenciones/nueva ni
+// /atenciones/verificaciones. Mismo criterio que /dashboard.
+const EXACT_MATCH_HREFS = new Set(["/dashboard", "/atenciones"]);
 
 export default function DashboardLayout({
   children,
@@ -83,7 +90,7 @@ export default function DashboardLayout({
   const isAdmin = hasAdminAccess(user);
 
   const isActive = (href: string) => {
-    if (href === "/dashboard") return pathname === "/dashboard";
+    if (EXACT_MATCH_HREFS.has(href)) return pathname === href;
     return pathname.startsWith(href);
   };
 

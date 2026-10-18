@@ -6,6 +6,7 @@ import type {
   CareEpisodeAttachment,
   CareEpisodeAttachmentPhase,
   CareEpisodeDetail,
+  CareEpisodeListResponse,
   CareEpisodeLookupVehicle,
   CareEpisodeVerificationItem,
   CreateCareEpisodeInput,
@@ -895,6 +896,16 @@ export const careEpisodeApi = {
     api
       .get("care-episodes/verifications")
       .json<CareEpisodeVerificationItem[]>()
+      .catch(toApiError),
+
+  /** F-023 RF-1: GET /care-episodes → listado paginado del taller del contexto WORKSHOP (sin PII). */
+  listCareEpisodes: ({
+    page = 1,
+    limit = 20,
+  }: { page?: number; limit?: number } = {}) =>
+    api
+      .get("care-episodes", { searchParams: { page, limit } })
+      .json<CareEpisodeListResponse>()
       .catch(toApiError),
 
   /** Iteración 2-2 RF-5: POST /care-episodes/:id/verify → 200 (contexto WORKSHOP; idempotente). */
