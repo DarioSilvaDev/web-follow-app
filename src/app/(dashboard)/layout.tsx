@@ -5,8 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { WorkshopSelector } from "@/components/layout/workshop-selector";
-import { DealershipSelector } from "@/components/layout/dealership-selector";
+import { ContextSelector } from "@/components/layout/context-selector";
 import { useActiveContext } from "@/hooks/use-active-context";
 import { useAuth } from "@/hooks/use-auth";
 import { hasAdminAccess } from "@/lib/admin-access";
@@ -79,10 +78,11 @@ export default function DashboardLayout({
 
   const isWorkshop = activeContext?.type === "WORKSHOP";
 
-  // PM §29 (D-105): "Concesionarias" + DealershipSelector solo se renderizan
-  // cuando el usuario tiene `dealershipMemberships` (datos de sesión — no
-  // permisos genéricos). NAV_ITEMS_BASE se mantiene como fuente canónica;
-  // el acceso del header al selector ya es condicional (§8 RB-10).
+  // PM §29 (D-105): "Concesionarias" solo se renderiza cuando el usuario
+  // tiene `dealershipMemberships` (datos de sesión — no permisos genéricos).
+  // NAV_ITEMS_BASE se mantiene como fuente canónica; el acceso del header al
+  // ContextSelector ya es condicional: sin membresías no renderiza nada
+  // (§8 RB-10).
   const hasDealerships = (user?.dealershipMemberships?.length ?? 0) > 0;
 
   // Onboarding administrado de concesionaria: "Administración" (workspace
@@ -116,8 +116,7 @@ export default function DashboardLayout({
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
-            <WorkshopSelector />
-            <DealershipSelector />
+            <ContextSelector />
             {navLinks.map((item) => (
               <Link
                 key={item.href}
@@ -168,8 +167,7 @@ export default function DashboardLayout({
 
           {/* Mobile hamburger */}
           <div className="flex items-center gap-2 md:hidden">
-            <WorkshopSelector />
-            <DealershipSelector />
+            <ContextSelector />
             {user && (
               <div
                 className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-medium"

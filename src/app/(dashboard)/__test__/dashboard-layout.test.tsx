@@ -49,8 +49,8 @@ vi.mock("@/lib/api", () => ({
 }));
 
 // Mock del selector: la lógica propia de selección se testea en su archivo.
-vi.mock("@/components/layout/workshop-selector", () => ({
-  WorkshopSelector: () => null,
+vi.mock("@/components/layout/context-selector", () => ({
+  ContextSelector: () => null,
 }));
 
 vi.mock("@/components/ui/button", () => ({
