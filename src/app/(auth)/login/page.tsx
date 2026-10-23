@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/card";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authApi } from "@/lib/api";
+import { isSafeNextPath, resolveSafeNext } from "@/lib/auth-redirect";
 import { useAuth } from "@/hooks/use-auth";
 
 const loginSchema = z.object({
@@ -34,6 +35,12 @@ function LoginFormInner() {
   const searchParams = useSearchParams();
   const { refreshSession } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
+
+  // D-12 §8: only the QR deep link survives a login round-trip; anything else
+  // (absolute URLs, protocol-relative `//host`, arbitrary internal routes) is
+  // dropped to prevent open redirects (H-30).
+  const rawNext = searchParams.get("next");
+  const safeNext = isSafeNextPath(rawNext) ? rawNext : null;
 
   const {
     register,
@@ -52,11 +59,8 @@ function LoginFormInner() {
       // Cookies are now set by the backend. Reload session from /auth/me.
       await refreshSession();
 
-      // Redirect: respect ?next= param (relative paths only — prevent open redirect), default to /dashboard
-      const next = searchParams.get("next");
-      const safeNext =
-        next && next.startsWith("/") && !next.startsWith("//") ? next : null;
-      router.push(safeNext || "/dashboard");
+      // Redirect: respect the allowlisted ?next= deep link, default to /dashboard.
+      router.push(resolveSafeNext(rawNext));
     } catch (err: unknown) {
       const error = err as { status?: number; message?: string; code?: string };
       if (error.status === 401) {
@@ -138,7 +142,11 @@ function LoginFormInner() {
           <p className="text-sm text-muted-foreground">
             ¿No tenés una cuenta?{" "}
             <Link
-              href="/register"
+              href={
+                safeNext
+                  ? `/register?next=${encodeURIComponent(safeNext)}`
+                  : "/register"
+              }
               className="font-medium text-foreground hover:underline"
             >
               Registrate

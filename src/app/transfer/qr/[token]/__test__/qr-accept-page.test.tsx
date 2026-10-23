@@ -6,7 +6,8 @@
  * - Confirmación explícita (D-082) → accept one-shot.
  * - Errores mapeados: 404 expirado / 409 consumido / 410 revocado / 400 self
  *   (nunca texto crudo del backend).
- * - Sin sesión → redirect a /login?next= (D-080, RF-7).
+ * - Sin sesión → ve el preview igual; recién al confirmar se lo manda a
+ *   /login?next= preservando el deep link (D-080, RF-7).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -187,17 +188,57 @@ describe("TransferQrAcceptPage", () => {
     );
   });
 
-  it("sin sesión: redirige a login preservando el deep link como next", async () => {
+  it("sin sesión: muestra el preview público y pide login recién al confirmar (D-080)", async () => {
+    const user = userEvent.setup();
     mockUseAuth.mockReturnValue({ status: "unauthenticated" });
+    mockPreview.mockResolvedValue(makePreview());
 
     render(<TransferQrAcceptPage />);
 
+    // El preview es público: NO redirige ni bloquea la carga (RF-7).
+    expect(await screen.findByText("Toyota Corolla")).toBeInTheDocument();
+    expect(mockPreview).toHaveBeenCalledWith("TOKEN123");
+    expect(mockReplace).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: /aceptar y recibir vehículo/i }),
+    );
+
+    // Recién al confirmar se conserva el deep link como next.
     await waitFor(() =>
       expect(mockReplace).toHaveBeenCalledWith(
         "/login?next=%2Ftransfer%2Fqr%2FTOKEN123",
       ),
     );
-    expect(mockPreview).not.toHaveBeenCalled();
+    expect(mockAccept).not.toHaveBeenCalled();
+  });
+
+  it("take sin sesión: no muestra el selector de concesionaria hasta autenticarse (D-TL-12)", async () => {
+    const user = userEvent.setup();
+    mockUseAuth.mockReturnValue({ status: "unauthenticated" });
+    mockPreview.mockResolvedValue(
+      makePreview({ purpose: "take", fromDealership: null }),
+    );
+
+    render(<TransferQrAcceptPage />);
+
+    expect(
+      await screen.findByText("Recibo del vehículo en consignación"),
+    ).toBeInTheDocument();
+    // El anónimo no ve el selector (no puede representar a una concesionaria
+    // todavía) y el botón NO queda bloqueado por falta de selección.
+    expect(
+      screen.queryByLabelText(/concesionaria que recibe el vehículo/i),
+    ).not.toBeInTheDocument();
+    const confirm = screen.getByRole("button", {
+      name: /confirmar recepción/i,
+    });
+    expect(confirm).toBeEnabled();
+
+    await user.click(confirm);
+    expect(mockReplace).toHaveBeenCalledWith(
+      "/login?next=%2Ftransfer%2Fqr%2FTOKEN123",
+    );
   });
 
   it("token faltante: error genérico sin llamar a la API", () => {

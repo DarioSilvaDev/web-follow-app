@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/card";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authApi } from "@/lib/api";
+import { isSafeNextPath } from "@/lib/auth-redirect";
 
 const registerSchema = z
   .object({
@@ -41,9 +43,18 @@ const registerSchema = z
 
 type RegisterForm = z.infer<typeof registerSchema>;
 
-export default function RegisterPage() {
+function RegisterFormInner() {
+  const searchParams = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // D-12 §8: preserve the allowlisted deep link across the login the user does
+  // right after registering (QR round-trip).
+  const rawNext = searchParams.get("next");
+  const safeNext = isSafeNextPath(rawNext) ? rawNext : null;
+  const loginHref = safeNext
+    ? `/login?next=${encodeURIComponent(safeNext)}`
+    : "/login";
 
   const {
     register,
@@ -97,7 +108,7 @@ export default function RegisterPage() {
           </p>
         </CardContent>
         <CardFooter className="justify-center">
-          <Link href="/login">
+          <Link href={loginHref}>
             <Button variant="outline">Ir al inicio de sesión</Button>
           </Link>
         </CardFooter>
@@ -209,7 +220,7 @@ export default function RegisterPage() {
             )}
           </Button>
           <Link
-            href="/login"
+            href={loginHref}
             className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
           >
             <ArrowLeft className="h-3 w-3" />
@@ -218,5 +229,21 @@ export default function RegisterPage() {
         </CardFooter>
       </form>
     </Card>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <Card className="w-full max-w-md">
+          <CardContent className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </CardContent>
+        </Card>
+      }
+    >
+      <RegisterFormInner />
+    </Suspense>
   );
 }

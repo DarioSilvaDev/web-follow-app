@@ -18,10 +18,10 @@
  * con URL `${FRONTEND_URL}/transfer/qr/{token}` (D-080).
  *
  * Flujo:
- * 1. Requiere sesión (JwtAuth). Si el usuario no está autenticado, se lo
- *    manda a /login?next=... (AuthProvider bootstrap + redirect).
- * 2. Carga el preview (GET vehicles/transfer/qr/:token) → vehículo + emisor
- *    (+ purpose + fromDealership cuando aplica).
+ * 1. El PREVIEW es público (GET vehicles/transfer/qr/:token sin auth): cualquiera
+ *    con el enlace ve de qué se trata el QR.
+ * 2. Recién al CONFIRMAR se exige sesión: si el usuario no está autenticado se
+ *    lo manda a /login?next=... y conserva el deep link.
  * 3. Confirmación explícita → POST .../accept (body confirmation:true). En
  *    "take" el contexto DEALERSHIP se setea antes de aceptar para que el
  *    cliente API inyecte X-Context-Type/Id.
@@ -160,14 +160,6 @@ export default function TransferQrAcceptPage() {
   const [dealershipId, setDealershipId] = useState<string>("");
   const started = useRef(false);
 
-  // Unauthenticated → login preserving the QR deep link as `next`.
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      const next = token ? `/transfer/qr/${encodeURIComponent(token)}` : "/transferencias";
-      router.replace(`/login?next=${encodeURIComponent(next)}`);
-    }
-  }, [status, token, router]);
-
   // Pre-select the active DEALERSHIP context when the page opens (take flow).
   useEffect(() => {
     if (activeContext?.type === "DEALERSHIP") {
@@ -175,9 +167,10 @@ export default function TransferQrAcceptPage() {
     }
   }, [activeContext]);
 
-  // Load preview once (authenticated + token present).
+  // Load preview once (public — no auth gate; token present). Anonymous users
+  // must see the preview before being asked to sign in.
   useEffect(() => {
-    if (status !== "authenticated" || !token || started.current) return;
+    if (!token || started.current) return;
     started.current = true;
 
     vehicleApi
@@ -187,10 +180,17 @@ export default function TransferQrAcceptPage() {
         setPreviewError(resolveQrPreviewErrorMessage(err)),
       )
       .finally(() => setLoading(false));
-  }, [status, token]);
+  }, [token]);
 
   const handleAccept = async () => {
     if (!token) return;
+    // Sign-in is required only to confirm (the preview is public). Preserve the
+    // deep link so the user lands back here after logging in.
+    if (status !== "authenticated") {
+      const next = `/transfer/qr/${encodeURIComponent(token)}`;
+      router.replace(`/login?next=${encodeURIComponent(next)}`);
+      return;
+    }
     setAccepting(true);
     setActionError(null);
     try {
@@ -220,8 +220,12 @@ export default function TransferQrAcceptPage() {
     (m) => m.dealershipId === dealershipId,
   );
   const PurposeIcon = PURPOSE_ICONS[purpose];
+  // La falta de concesionaria solo bloquea a un usuario autenticado: el
+  // anónimo puede ver el preview y se lo guía a iniciar sesión al confirmar.
   const noDealershipToReceive =
-    purpose === "take" && dealershipMemberships.length === 0;
+    status === "authenticated" &&
+    purpose === "take" &&
+    dealershipMemberships.length === 0;
 
   if (!token) {
     return (
@@ -324,7 +328,7 @@ export default function TransferQrAcceptPage() {
             </p>
           </div>
 
-          {purpose === "take" && (
+          {purpose === "take" && status === "authenticated" && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="qr-take-dealership">
                 Concesionaria que recibe el vehículo
@@ -362,7 +366,12 @@ export default function TransferQrAcceptPage() {
         <CardFooter className="flex flex-col gap-2">
           <Button
             className="w-full"
-            disabled={accepting || (purpose === "take" && !dealershipId)}
+            disabled={
+              accepting ||
+              (status === "authenticated" &&
+                purpose === "take" &&
+                !dealershipId)
+            }
             onClick={handleAccept}
           >
             {accepting ? (

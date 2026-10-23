@@ -2,7 +2,8 @@
  * Tests for the Login page behavior.
  *
  * Critical behaviors:
- * a. Successful login → calls refreshSession (/auth/me), redirects to ?next=
+ * a. Successful login → calls refreshSession (/auth/me), redirects to the
+ *    allow-listed ?next= (only /transfer/qr/:token) else /dashboard
  *    → D-001: no localStorage/sessionStorage token writes
  * b. 401 → shows "Email o contraseña incorrectos"
  */
@@ -150,8 +151,9 @@ describe("Login page", () => {
     });
   });
 
-  it("respects ?next= param and redirects there after login", async () => {
+  it("rechaza un ?next= interno no permitido y cae a /dashboard", async () => {
     const user = userEvent.setup();
+    // Solo el deep link de QR está permitido como next (evita open redirect).
     mockGetNextParam.mockReturnValue("/vehicles/v1");
     mockLogin.mockResolvedValue({ user: {} });
     mockRefreshSession.mockResolvedValue(undefined);
@@ -166,7 +168,51 @@ describe("Login page", () => {
     await user.click(screen.getByRole("button", { name: /iniciar sesión/i }));
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/vehicles/v1");
+      expect(mockPush).toHaveBeenCalledWith("/dashboard");
+    });
+    expect(mockPush).not.toHaveBeenCalledWith("/vehicles/v1");
+  });
+
+  it("rechaza un ?next= externo (open redirect) y cae a /dashboard", async () => {
+    const user = userEvent.setup();
+    mockGetNextParam.mockReturnValue("https://evil.example/phishing");
+    mockLogin.mockResolvedValue({ user: {} });
+    mockRefreshSession.mockResolvedValue(undefined);
+
+    render(<LoginPage />);
+
+    await user.type(
+      screen.getByRole("textbox", { name: /email/i }),
+      "test@example.com",
+    );
+    await user.type(screen.getByLabelText(/contraseña/i), "password123");
+    await user.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/dashboard");
+    });
+    expect(mockPush).not.toHaveBeenCalledWith(
+      "https://evil.example/phishing",
+    );
+  });
+
+  it("preserva el deep link permitido de QR (/transfer/qr/:token)", async () => {
+    const user = userEvent.setup();
+    mockGetNextParam.mockReturnValue("/transfer/qr/TOKEN123");
+    mockLogin.mockResolvedValue({ user: {} });
+    mockRefreshSession.mockResolvedValue(undefined);
+
+    render(<LoginPage />);
+
+    await user.type(
+      screen.getByRole("textbox", { name: /email/i }),
+      "test@example.com",
+    );
+    await user.type(screen.getByLabelText(/contraseña/i), "password123");
+    await user.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/transfer/qr/TOKEN123");
     });
   });
 
