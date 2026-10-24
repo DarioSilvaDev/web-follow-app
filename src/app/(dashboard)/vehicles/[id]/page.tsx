@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -11,16 +11,10 @@ import {
 import {
   ArrowRightLeft,
   Car,
-  Download,
-  FileText,
   Gauge,
-  ImageIcon,
   Loader2,
   RotateCw,
-  Star,
   Store,
-  Trash2,
-  Upload,
   Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,32 +25,26 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogClose,
-  DialogDescription,
-  DialogPopup,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { useActiveContext } from "@/hooks/use-active-context";
 import { vehicleApi } from "@/lib/api";
+import { errorStatus } from "@/lib/api-error";
+import { MEDIA_STALE_TIME } from "@/lib/constants";
+import { formatDateTime } from "@/lib/format-date";
 import { activeConsignmentDealership } from "@/lib/consignment";
 import { VehicleHeader } from "@/components/vehicle/vehicle-header";
+import { PhotosSection } from "@/components/vehicle/photos-section";
+import { DocumentsSection } from "@/components/vehicle/documents-section";
 import { TransferDialog } from "@/components/transfer/transfer-dialog";
 import {
   type TimelineEntry,
   mergeHistory,
   mileageSourceLabel,
 } from "@/lib/vehicle-history";
-import type {
-  Vehicle,
-  VehicleDocument,
-  VehiclePhoto,
-} from "@/types/vehicle";
+import type { Vehicle } from "@/types/vehicle";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,34 +59,6 @@ function isVehicleOwner(vehicle: Vehicle, userId: string | undefined): boolean {
       (o) => o.userId === userId && o.type === "owner" && !o.endsAt,
     ) ?? false
   );
-}
-
-function errorStatus(error: unknown): number | undefined {
-  return (error as { status?: number }).status;
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function formatDateTime(value?: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("es-AR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 /** F-014: fecha de timeline — dd/mm/yyyy (con hora si el timestamp la trae). */
@@ -132,13 +92,9 @@ const TIMELINE_TYPE_ICONS: Record<TimelineEntry["type"], React.ComponentType<{ c
   care: Wrench,
 };
 
-/** Detección de imagen por extensión del key (el schema NO expone mimeType). */
-function isImageDocument(doc: VehicleDocument): boolean {
-  return /\.(jpe?g|png|webp|avif)$/i.test(doc.key);
-}
-
 // ---------------------------------------------------------------------------
 // Comisión: Cards verticales — Ficha / Fotos / Documentos / Kilometraje
+// (Fotos y Documentos viven en src/components/vehicle/*-section.tsx)
 // ---------------------------------------------------------------------------
 
 function FichaCard({ vehicle }: { vehicle: Vehicle }) {
@@ -172,7 +128,7 @@ function FichaCard({ vehicle }: { vehicle: Vehicle }) {
           </p>
         </div>
         <div>
-          <p className="text-muted-foreground">Años</p>
+          <p className="text-muted-foreground">Año</p>
           <p className="font-medium">
             {[vehicle.manufactureYear, vehicle.modelYear]
               .filter((year): year is number => typeof year === "number")
@@ -216,677 +172,6 @@ function FichaCard({ vehicle }: { vehicle: Vehicle }) {
 
 // ---------------------------------------------------------------------------
 
-function PhotosSection({
-  vehicleId,
-  canWrite,
-  photos,
-  isLoading,
-  isError,
-  refetch,
-}: {
-  vehicleId: string;
-  canWrite: boolean;
-  photos: VehiclePhoto[];
-  isLoading: boolean;
-  isError: boolean;
-  refetch: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["vehicle", vehicleId, "photos"] });
-
-  const uploadPhoto = useMutation({
-    mutationFn: (file: File) => vehicleApi.uploadPhoto(vehicleId, file),
-    onSuccess: () => {
-      setUploadError(null);
-      invalidate();
-    },
-  });
-
-  const setPrimary = useMutation({
-    mutationFn: (photoId: string) =>
-      vehicleApi.setPrimaryPhoto(vehicleId, photoId),
-    onSuccess: invalidate,
-  });
-
-  const remove = useMutation({
-    mutationFn: (photoId: string) => vehicleApi.deletePhoto(vehicleId, photoId),
-    onSuccess: invalidate,
-  });
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    uploadPhoto.mutate(file, {
-      onError: (error) => {
-        const status = errorStatus(error);
-        if (status === 400) {
-          setUploadError(
-            "El archivo no es una imagen válida (JPG, PNG, WebP o AVIF) o supera los 10MB.",
-          );
-        } else if (status === 403) {
-          setUploadError("No tenés permiso para modificar las fotos de este vehículo.");
-        } else {
-          setUploadError("No se pudo subir la foto. Intentalo nuevamente.");
-        }
-      },
-    });
-  };
-
-  const [photoToDelete, setPhotoToDelete] = useState<VehiclePhoto | null>(null);
-
-  const handleDelete = (photo: VehiclePhoto) => {
-    setPhotoToDelete(photo);
-  };
-
-  const confirmDelete = () => {
-    if (!photoToDelete) return;
-    remove.mutate(photoToDelete.id);
-    setPhotoToDelete(null);
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Fotos</CardTitle>
-        <CardDescription>
-          {photos.length > 0
-            ? `${photos.length} ${photos.length === 1 ? "foto" : "fotos"} — la foto principal se muestra primero.`
-            : "Documentá visualmente el vehículo."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {isLoading ? (
-          <div className="flex justify-center py-6">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : isError ? (
-          <div className="flex flex-col items-center gap-2 py-6 text-center">
-            <p className="text-sm text-muted-foreground">
-              No se pudieron cargar las fotos.
-            </p>
-            <Button variant="outline" size="sm" onClick={refetch}>
-              <RotateCw className="h-3.5 w-3.5" />
-              Reintentar
-            </Button>
-          </div>
-        ) : photos.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">
-            Todavía no hay fotos de este vehículo.
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {photos.map((photo) => (
-              <div
-                key={photo.id}
-                className="relative overflow-hidden rounded-lg ring-1 ring-foreground/10"
-              >
-                {photo.url ? (
-                  // Signed R2 URL (batch ?signed=true). Al no conocer el host al
-                  // build-time usamos <img> nativo (sin next/image) — aceptable
-                  // para un set limitado de fotos (D-047 MVP).
-                  <img
-                    src={photo.url}
-                    alt={photo.caption ?? "Foto del vehículo"}
-                    loading="lazy"
-                    className="aspect-square w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex aspect-square w-full items-center justify-center bg-muted/40">
-                    <ImageIcon className="h-8 w-8 text-muted-foreground/50" />
-                  </div>
-                )}
-                {photo.isPrimary && (
-                  <span className="absolute left-1.5 top-1.5 rounded bg-primary/90 px-1.5 py-0.5 text-[0.65rem] font-medium text-primary-foreground">
-                    Principal
-                  </span>
-                )}
-                {canWrite && (
-                  <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-background/80 p-1.5 backdrop-blur-sm">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      aria-label="Establecer como principal"
-                      title="Establecer como principal"
-                      disabled={photo.isPrimary || setPrimary.isPending}
-                      onClick={() => setPrimary.mutate(photo.id)}
-                    >
-                      <Star
-                        className={
-                          photo.isPrimary
-                            ? "fill-foreground text-foreground"
-                            : ""
-                        }
-                      />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      aria-label="Eliminar foto"
-                      title="Eliminar foto"
-                      disabled={remove.isPending}
-                      onClick={() => handleDelete(photo)}
-                    >
-                      <Trash2 className="text-destructive" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {uploadError && (
-          <p className="text-sm text-destructive" role="alert">
-            {uploadError}
-          </p>
-        )}
-
-        {canWrite && (
-          <div className="flex flex-col gap-2">
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/avif"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full sm:w-auto"
-              disabled={uploadPhoto.isPending}
-              onClick={() => inputRef.current?.click()}
-            >
-              {uploadPhoto.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Subiendo...
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4" />
-                  Subir foto
-                </>
-              )}
-            </Button>
-          </div>
-        )}
-      </CardContent>
-
-      {/* Dialog de confirmación para eliminar foto */}
-      <Dialog
-        open={photoToDelete !== null}
-        onOpenChange={(open) => {
-          if (!open) setPhotoToDelete(null);
-        }}
-      >
-        <DialogPopup>
-          <DialogTitle>Eliminar foto</DialogTitle>
-          <DialogDescription>
-            ¿Estás seguro de que querés eliminar esta foto? Esta acción no se
-            puede deshacer.
-          </DialogDescription>
-          <div className="flex justify-end gap-2">
-            <DialogClose render={<Button variant="outline" disabled={remove.isPending} />}>
-              Cancelar
-            </DialogClose>
-            <Button
-              variant="destructive"
-              onClick={confirmDelete}
-              disabled={remove.isPending}
-            >
-              {remove.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Eliminando...
-                </>
-              ) : (
-                "Eliminar"
-              )}
-            </Button>
-          </div>
-        </DialogPopup>
-      </Dialog>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-function DocumentsSection({
-  vehicleId,
-  canWrite,
-  documents,
-  isLoading,
-  isError,
-  refetch,
-}: {
-  vehicleId: string;
-  canWrite: boolean;
-  documents: VehicleDocument[];
-  isLoading: boolean;
-  isError: boolean;
-  refetch: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [showUpload, setShowUpload] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [docToDelete, setDocToDelete] = useState<VehicleDocument | null>(null);
-
-  // Upload form state
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadName, setUploadName] = useState("");
-  const [uploadType, setUploadType] = useState("");
-  const [uploadExpiry, setUploadExpiry] = useState("");
-
-  // Edit form state
-  const [editName, setEditName] = useState("");
-  const [editType, setEditType] = useState("");
-  const [editExpiry, setEditExpiry] = useState("");
-
-  const invalidate = () =>
-    queryClient.invalidateQueries({
-      queryKey: ["vehicle", vehicleId, "documents"],
-    });
-
-  const upload = useMutation({
-    mutationFn: (args: { file: File; name: string; documentType: string; expiresAt?: string }) =>
-      vehicleApi.uploadDocument(vehicleId, args.file, {
-        name: args.name,
-        documentType: args.documentType,
-        expiresAt: args.expiresAt || undefined,
-      }),
-    onSuccess: () => {
-      setUploadError(null);
-      setUploadFile(null);
-      setUploadName("");
-      setUploadType("");
-      setUploadExpiry("");
-      setShowUpload(false);
-      invalidate();
-    },
-  });
-
-  const updateDoc = useMutation({
-    mutationFn: (args: { docId: string; name: string; documentType: string; expiresAt?: string | null }) =>
-      vehicleApi.updateDocument(vehicleId, args.docId, {
-        name: args.name,
-        documentType: args.documentType,
-        expiresAt: args.expiresAt === "" ? null : args.expiresAt,
-      }),
-    onSuccess: () => {
-      setEditingId(null);
-      invalidate();
-    },
-  });
-
-  const remove = useMutation({
-    mutationFn: (docId: string) => vehicleApi.deleteDocument(vehicleId, docId),
-    onSuccess: invalidate,
-  });
-
-  const handleUploadSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    setUploadError(null);
-    if (!uploadFile) return;
-    if (!uploadName.trim() || !uploadType.trim()) return;
-    upload.mutate(
-      {
-        file: uploadFile,
-        name: uploadName.trim(),
-        documentType: uploadType.trim(),
-        expiresAt: uploadExpiry || undefined,
-      },
-      {
-        onError: (error) => {
-          const status = errorStatus(error);
-          if (status === 400) {
-            setUploadError(
-              "El archivo no es válido (imagen o PDF, máximo 10MB) o faltan datos.",
-            );
-          } else if (status === 403) {
-            setUploadError("No tenés permiso para modificar los documentos de este vehículo.");
-          } else {
-            setUploadError("No se pudo subir el documento. Intentalo nuevamente.");
-          }
-        },
-      },
-    );
-  };
-
-  const startEdit = (doc: VehicleDocument) => {
-    setEditingId(doc.id);
-    setEditName(doc.name);
-    setEditType(doc.documentType);
-    setEditExpiry(doc.expiresAt ? doc.expiresAt.slice(0, 10) : "");
-  };
-
-  const handleEditSubmit = (event: React.FormEvent, docId: string) => {
-    event.preventDefault();
-    updateDoc.mutate(
-      {
-        docId,
-        name: editName.trim(),
-        documentType: editType.trim(),
-        expiresAt: editExpiry === "" ? null : editExpiry,
-      },
-      {
-        onError: (error) => {
-          const status = errorStatus(error);
-          if (status === 403) {
-            setUploadError("No tenés permiso para modificar los documentos de este vehículo.");
-          } else {
-            setUploadError("No se pudo actualizar el documento. Intentalo nuevamente.");
-          }
-        },
-      },
-    );
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Documentos</CardTitle>
-        <CardDescription>
-          {documents.length > 0
-            ? `${documents.length} ${documents.length === 1 ? "documento" : "documentos"}.`
-            : "Cargá documentos como cédula, seguro o VTV."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {isLoading ? (
-          <div className="flex justify-center py-6">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : isError ? (
-          <div className="flex flex-col items-center gap-2 py-6 text-center">
-            <p className="text-sm text-muted-foreground">
-              No se pudieron cargar los documentos.
-            </p>
-            <Button variant="outline" size="sm" onClick={refetch}>
-              <RotateCw className="h-3.5 w-3.5" />
-              Reintentar
-            </Button>
-          </div>
-        ) : documents.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">
-            No hay documentos cargados.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {documents.map((doc) => (
-              <li
-                key={doc.id}
-                className="flex items-center gap-3 rounded-lg ring-1 ring-foreground/10 p-2"
-              >
-                {doc.url && isImageDocument(doc) ? (
-                  <img
-                    src={doc.url}
-                    alt={doc.name}
-                    loading="lazy"
-                    className="h-12 w-12 shrink-0 rounded object-cover"
-                  />
-                ) : (
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-muted/50">
-                    <FileText className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                )}
-
-                {editingId === doc.id ? (
-                  <form
-                    className="grid flex-1 gap-2"
-                    onSubmit={(e) => handleEditSubmit(e, doc.id)}
-                  >
-                    <div className="grid gap-1.5">
-                      <Label htmlFor={`doc-name-${doc.id}`} className="text-xs">
-                        Nombre
-                      </Label>
-                      <Input
-                        id={`doc-name-${doc.id}`}
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor={`doc-type-${doc.id}`} className="text-xs">
-                        Tipo
-                      </Label>
-                      <Input
-                        id={`doc-type-${doc.id}`}
-                        value={editType}
-                        onChange={(e) => setEditType(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor={`doc-expiry-${doc.id}`} className="text-xs">
-                        Vence (opcional)
-                      </Label>
-                      <Input
-                        id={`doc-expiry-${doc.id}`}
-                        type="date"
-                        value={editExpiry}
-                        onChange={(e) => setEditExpiry(e.target.value)}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button type="submit" size="sm">
-                        Guardar
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setEditingId(null)}
-                      >
-                        Cancelar
-                      </Button>
-                    </div>
-                  </form>
-                ) : (
-                  <>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{doc.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {doc.documentType}
-                        {doc.expiresAt
-                          ? ` · vence ${formatDate(doc.expiresAt)}`
-                          : ""}
-                      </p>
-                    </div>
-                    {doc.url && (
-                      <a
-                        href={doc.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`Descargar ${doc.name}`}
-                        title="Descargar"
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <Download className="h-4 w-4" />
-                      </a>
-                    )}
-                    {canWrite && (
-                      <>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="xs"
-                          onClick={() => startEdit(doc)}
-                        >
-                          Editar
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="xs"
-                          aria-label={`Eliminar documento ${doc.name}`}
-                          onClick={() => setDocToDelete(doc)}
-                        >
-                          <Trash2 className="text-destructive" />
-                        </Button>
-                      </>
-                    )}
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {uploadError && (
-          <p className="text-sm text-destructive" role="alert">
-            {uploadError}
-          </p>
-        )}
-
-        {canWrite && (
-          <div className="flex flex-col gap-2">
-            {showUpload ? (
-              <form
-                className="grid gap-3 rounded-lg ring-1 ring-foreground/10 p-3"
-                onSubmit={handleUploadSubmit}
-              >
-                <div className="grid gap-1.5">
-                  <Label htmlFor="doc-upload-file">Archivo</Label>
-                  <Input
-                    id="doc-upload-file"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/avif,application/pdf"
-                    required
-                    onChange={(e) =>
-                      setUploadFile(e.target.files?.[0] ?? null)
-                    }
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="doc-upload-name">Nombre</Label>
-                  <Input
-                    id="doc-upload-name"
-                    placeholder="Ej. Cédula verde"
-                    value={uploadName}
-                    onChange={(e) => setUploadName(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="doc-upload-type">Tipo</Label>
-                  <Input
-                    id="doc-upload-type"
-                    placeholder="Ej. Cédula, Seguro, VTV"
-                    value={uploadType}
-                    onChange={(e) => setUploadType(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="doc-upload-expiry">
-                    Vencimiento (opcional)
-                  </Label>
-                  <Input
-                    id="doc-upload-expiry"
-                    type="date"
-                    value={uploadExpiry}
-                    onChange={(e) => setUploadExpiry(e.target.value)}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={upload.isPending || !uploadFile}
-                  >
-                    {upload.isPending ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Subiendo...
-                      </>
-                    ) : (
-                      "Subir documento"
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setShowUpload(false);
-                      setUploadError(null);
-                    }}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              </form>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={() => setShowUpload(true)}
-              >
-                <Upload className="h-4 w-4" />
-                Subir documento
-              </Button>
-            )}
-          </div>
-        )}
-      </CardContent>
-
-      {/* Dialog de confirmación para eliminar documento */}
-      <Dialog
-        open={docToDelete !== null}
-        onOpenChange={(open) => {
-          if (!open) setDocToDelete(null);
-        }}
-      >
-        <DialogPopup>
-          <DialogTitle>Eliminar documento</DialogTitle>
-          <DialogDescription>
-            ¿Estás seguro de que querés eliminar &quot;{docToDelete?.name}&quot;?
-            Esta acción no se puede deshacer.
-          </DialogDescription>
-          <div className="flex justify-end gap-2">
-            <DialogClose render={<Button variant="outline" disabled={remove.isPending} />}>
-              Cancelar
-            </DialogClose>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (docToDelete) {
-                  remove.mutate(docToDelete.id);
-                  setDocToDelete(null);
-                }
-              }}
-              disabled={remove.isPending}
-            >
-              {remove.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Eliminando...
-                </>
-              ) : (
-                "Eliminar"
-              )}
-            </Button>
-          </div>
-        </DialogPopup>
-      </Dialog>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
 function MileageSection({
   vehicle,
   canWrite,
@@ -900,7 +185,7 @@ function MileageSection({
   const [formError, setFormError] = useState<string | null>(null);
 
   const record = useMutation({
-    mutationFn: (dto: { mileage: number; source: "owner"; notes?: string }) =>
+    mutationFn: (dto: { mileage: number; notes?: string }) =>
       vehicleApi.recordMileage(vehicle.id, dto),
     onSuccess: () => {
       setKm("");
@@ -919,8 +204,10 @@ function MileageSection({
       setFormError("Ingresá un kilometraje válido.");
       return;
     }
+    // D-11 (Gap 1): el payload es { mileage, notes? } — el backend deriva
+    // source/recordedBy del contexto activo (concesionaria u dueño).
     record.mutate(
-      { mileage: Math.round(parsed), source: "owner", notes: notes.trim() || undefined },
+      { mileage: Math.round(parsed), notes: notes.trim() || undefined },
       {
         onError: (error) => {
           const status = errorStatus(error);
@@ -939,13 +226,18 @@ function MileageSection({
   };
 
   const mileages = vehicle.mileages ?? [];
+  // D-11 (Gap 1): distinguir "sin registros" (mileageCount 0) de "hay registros
+  // pero los últimos no vinieron" — y garantizar que un registro de 0 km se
+  // renderice (no colapsa a estado vacío).
+  const totalCount = vehicle.mileageCount ?? mileages.length;
+  const hasAnyRecord = totalCount > 0;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Kilometraje</CardTitle>
         <CardDescription>
-          {mileages.length > 0
+          {hasAnyRecord
             ? "Últimos registros de kilometraje."
             : "Registrá el kilometraje para mantener la historia del vehículo."}
         </CardDescription>
@@ -953,7 +245,9 @@ function MileageSection({
       <CardContent className="flex flex-col gap-4">
         {mileages.length === 0 ? (
           <p className="py-2 text-sm text-muted-foreground">
-            Todavía no hay registros de kilometraje.
+            {hasAnyRecord
+              ? "No se pudieron cargar los últimos registros."
+              : "Todavía no hay registros de kilometraje."}
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -973,7 +267,10 @@ function MileageSection({
                   ) : null}
                 </div>
                 <div className="text-right text-xs text-muted-foreground">
-                  <p>{mileageSourceLabel(mileage.source)}</p>
+                  <p>
+                    {mileage.recordedBy?.displayName ??
+                      mileageSourceLabel(mileage.source)}
+                  </p>
                   <p>{formatDateTime(mileage.recordedAt)}</p>
                 </div>
               </li>
@@ -1175,12 +472,16 @@ export default function VehicleDetailPage() {
     queryKey: ["vehicle", id, "photos"],
     queryFn: () => vehicleApi.listPhotos(id),
     retry: false,
+    // URLs firmadas (~1 h en backend): 5 min evita refetch en cada mount.
+    staleTime: MEDIA_STALE_TIME,
   });
 
   const documentsQuery = useQuery({
     queryKey: ["vehicle", id, "documents"],
     queryFn: () => vehicleApi.listDocuments(id),
     retry: false,
+    // Idem photosQuery — URLs firmadas con expiración.
+    staleTime: MEDIA_STALE_TIME,
   });
 
   // F-014 §5: 4ª llamada en paralelo (no bloquea la carga inicial del ficha).
@@ -1247,19 +548,32 @@ export default function VehicleDetailPage() {
 
   const vehicle = vehicleQuery.data;
   const isOwner = isVehicleOwner(vehicle, user?.id);
+
+  // D-12 (Gap 1): el backend calcula las capacidades para ESTE usuario y
+  // contexto activo (ownership ≠ access; una concesionaria puede editar sin
+  // ser "owner"). CONTRACT TOLERANCE: mientras un backend previo no envíe
+  // `capabilities`, se cae al comportamiento anterior basado en ownership.
+  const canEdit = vehicle.capabilities?.canEdit ?? isOwner;
+  const canRecordMileage = vehicle.capabilities?.canRecordMileage ?? isOwner;
+
   // Milestone consignación (D-107/RB-09): durante la exhibición la dealership
-  // es titular intermedio → el vendedor ve banner y conserva SOLO lectura
-  // (canWrite = isOwner ya es false porque el ownership activo es company).
+  // es titular intermedio. El banner se muestra a QUIEN NO PUEDE EDITAR
+  // (lectores); el miembro titular ve la ficha normal (D-TL-12).
   const consignmentDealership = activeConsignmentDealership(vehicle);
+  const showConsignmentBanner = !!consignmentDealership && !canEdit;
 
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
-      <VehicleHeader vehicle={vehicle} isOwner={isOwner} />
+      <VehicleHeader
+        vehicle={vehicle}
+        canEdit={canEdit}
+        showSharedBadge={!isOwner}
+      />
 
       {/* Banner de consignación (D-107): visible para quien lee el vehículo
           mientras la concesionaria es titular intermedio. */}
-      {consignmentDealership && (
+      {showConsignmentBanner && consignmentDealership && (
         <div
           role="status"
           className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm"
@@ -1313,10 +627,10 @@ export default function VehicleDetailPage() {
       {/* Ficha (progressive: apenas llega GET /:id) */}
       <FichaCard vehicle={vehicle} />
 
-      {/* Fotos (signed URLs batch ?signed=true) */}
+      {/* Fotos (signed URLs batch ?signed=true + visor full-screen) */}
       <PhotosSection
         vehicleId={vehicle.id}
-        canWrite={isOwner}
+        canWrite={canEdit}
         photos={photosQuery.data ?? []}
         isLoading={photosQuery.isLoading}
         isError={photosQuery.isError}
@@ -1327,10 +641,10 @@ export default function VehicleDetailPage() {
         }
       />
 
-      {/* Documentos (signed URLs batch ?signed=true) */}
+      {/* Documentos (signed URLs batch ?signed=true + preview PDF/imagen) */}
       <DocumentsSection
         vehicleId={vehicle.id}
-        canWrite={isOwner}
+        canWrite={canEdit}
         documents={documentsQuery.data ?? []}
         isLoading={documentsQuery.isLoading}
         isError={documentsQuery.isError}
@@ -1342,7 +656,7 @@ export default function VehicleDetailPage() {
       />
 
       {/* Kilometraje (últimos 5 de GET /:id) */}
-      <MileageSection vehicle={vehicle} canWrite={isOwner} />
+      <MileageSection vehicle={vehicle} canWrite={canRecordMileage} />
 
       {/* Historial (F-014 / D-052: merge cronológico de transfers, km y titularidad) */}
       <HistorySection

@@ -19,7 +19,7 @@ import type {
  *
  * - UN archivo por request (FileInterceptor single 'files'); el "lote" se
  *   resuelve con subida SECUENCIAL en el cliente (patrón vehicleApi.uploadPhoto).
- * - Estados por archivo: pending → uploading (progreso aria-valuenow) → done,
+ * - Estados por archivo: pending → uploading (indicador indeterminado) → done,
  *   y error con Reintentar.
  * - Validación cliente espejo del backend (validateAttachmentFiles): tipos,
  *   5MB, lote 5 (input multiple) y tope 15 contra `existingCount`.
@@ -47,7 +47,6 @@ export interface UploadItem {
   file: File;
   caption: string;
   status: "pending" | "uploading" | "done" | "error";
-  progress: number;
   error?: string;
 }
 
@@ -108,7 +107,6 @@ export function AttachmentsUploader({
       file,
       caption: "",
       status: "pending",
-      progress: 0,
     }));
     commitItems((prev) => [...prev, ...next]);
     if (inputRef.current) {
@@ -134,19 +132,18 @@ export function AttachmentsUploader({
       if (!current || current.status === "uploading" || current.status === "done") {
         continue;
       }
-      updateItem(item.key, (entry) => ({ ...entry, status: "uploading", progress: 0 }));
+      updateItem(item.key, (entry) => ({ ...entry, status: "uploading" }));
       try {
-        const attachment = await careEpisodeApi.uploadAttachment(
-          episodeId,
-          { file: item.file, phase: uploadPhase, caption: item.caption || undefined },
-          (percent) =>
-            updateItem(item.key, (entry) => ({ ...entry, progress: percent })),
-        );
-        updateItem(item.key, (entry) => ({
-          ...entry,
-          status: "done",
-          progress: 100,
-        }));
+        // Sin callback de progreso A PROPÓSITO: ky con `onUploadProgress` fuerza
+        // un body streamed (`duplex: 'half'`) que rompe sobre HTTP/1.1 con
+        // net::ERR_ALPN_NEGOTIATION_FAILED (ver src/lib/api.ts). El indicador
+        // de subida es indeterminado mientras dura el request.
+        const attachment = await careEpisodeApi.uploadAttachment(episodeId, {
+          file: item.file,
+          phase: uploadPhase,
+          caption: item.caption || undefined,
+        });
+        updateItem(item.key, (entry) => ({ ...entry, status: "done" }));
         onUploaded?.(attachment);
       } catch (error) {
         updateItem(item.key, (entry) => ({
@@ -235,7 +232,7 @@ export function AttachmentsUploader({
                 {item.status === "uploading" && (
                   <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Subiendo {item.progress}%
+                    Subiendo...
                   </span>
                 )}
                 {item.status === "error" && (
@@ -270,18 +267,14 @@ export function AttachmentsUploader({
               </div>
 
               {item.status === "uploading" && (
+                // Indeterminado: sin `aria-valuenow` (el cliente no recibe el %
+                // real; ver nota en el bloque de upload). La barra pulsa.
                 <div
                   role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={item.progress}
                   aria-label={`Subiendo ${item.file.name}`}
                   className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
                 >
-                  <div
-                    className="h-full bg-primary transition-all"
-                    style={{ width: `${item.progress}%` }}
-                  />
+                  <div className="h-full w-full animate-pulse rounded-full bg-primary/50" />
                 </div>
               )}
             </div>

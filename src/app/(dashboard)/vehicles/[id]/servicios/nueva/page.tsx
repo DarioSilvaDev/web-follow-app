@@ -192,15 +192,19 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
   const evidenceInputRef = useRef<HTMLInputElement>(null);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
-  const [evidenceProgress, setEvidenceProgress] = useState<number | null>(null);
+  // Subida indeterminada (sin % real): el multipart viaja buffered y el cliente
+  // no puede reportar progreso sin forzar streaming y romper HTTP/1.1 (api.ts).
+  const [evidenceUploading, setEvidenceUploading] = useState(false);
   const [createdServiceId, setCreatedServiceId] = useState<string | null>(null);
 
   const handleEvidenceFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
     const node = event.target;
+    // Materializar el FileList ANTES de limpiar `value`: el FileList es vivo
+    // y limpiar el input vacía la selección (en navegadores reales).
     const files = node.files;
+    const batch = files ? Array.from(files) : [];
     node.value = "";
-    if (!files) return;
-    const batch = Array.from(files);
+    if (batch.length === 0) return;
     // El límite de lote del owner create (FilesInterceptor MAX 5) es por
     // servicio, no por selección → validar contra lo ya acumulado.
     if (
@@ -267,7 +271,9 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
   ) => {
     setSubmitError(null);
     setWorkshopError(null);
-    setEvidenceProgress(null);
+    // Con archivos, la creación viaja como multipart: mostramos un estado
+    // indeterminado mientras dura el POST (sin % real, ver api.ts).
+    setEvidenceUploading(evidenceFiles.length > 0);
     try {
       const commonInput = {
         vehicleId,
@@ -287,7 +293,6 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
           commonInput,
           evidenceFiles,
           undefined,
-          setEvidenceProgress,
         );
         createdId = created.id;
       } else {
@@ -310,6 +315,8 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
       } else {
         setRetry(null);
       }
+    } finally {
+      setEvidenceUploading(false);
     }
   };
 
@@ -384,7 +391,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
     setWorkshopMode("search");
     setEvidenceFiles([]);
     setEvidenceError(null);
-    setEvidenceProgress(null);
+    setEvidenceUploading(false);
     setCreatedServiceId(null);
   };
 
@@ -540,9 +547,13 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                 </ul>
               ) : null}
 
-              {evidenceProgress !== null && evidenceFiles.length > 0 && (
-                <p role="status" className="text-xs text-muted-foreground">
-                  Subiendo evidencia {evidenceProgress}%...
+              {evidenceUploading && evidenceFiles.length > 0 && (
+                <p
+                  role="status"
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                >
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Subiendo evidencia...
                 </p>
               )}
               {evidenceError && (

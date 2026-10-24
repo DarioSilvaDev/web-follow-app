@@ -80,6 +80,12 @@ export default function DashboardPage() {
         </Link>
         {isWorkshop && (
           <>
+            <Link href="/atenciones">
+              <Button variant="outline" size="sm">
+                <FileText className="mr-1.5 h-3.5 w-3.5" />
+                Atenciones
+              </Button>
+            </Link>
             <Link href="/atenciones/nueva">
               <Button variant="outline" size="sm">
                 <Wrench className="mr-1.5 h-3.5 w-3.5" />

@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { clearDealership, selectDealership } from "@/lib/active-context";
 
 // ── Mocks (must be before dynamic imports) ───────────────────────────────────
 
@@ -89,6 +90,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  clearDealership();
 });
 
 function renderForm() {
@@ -184,18 +186,39 @@ describe("Vehicle register form", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it("shows a clear message on 409 VIN conflict", async () => {
+  it("blocks submit with an invalid VIN format (D-04/D-145)", async () => {
     const user = userEvent.setup();
     mockListBrands.mockResolvedValue([]);
-    mockRegister.mockRejectedValue({
-      status: 409,
-      message: "Vehicle with vin 'WVW123' already exists",
-    });
 
     renderForm();
 
     await user.type(screen.getByLabelText(/placa/i), "ABC123");
     await user.type(screen.getByLabelText(/vin/i), "WVW123");
+    await user.click(screen.getByRole("button", { name: /registrar vehículo/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "El VIN debe tener 17 caracteres válidos (sin I, O ni Q).",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(mockRegister).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("shows a clear message on 409 VIN conflict", async () => {
+    const user = userEvent.setup();
+    mockListBrands.mockResolvedValue([]);
+    mockRegister.mockRejectedValue({
+      status: 409,
+      message: "Vehicle with vin '1HGCM82633A004352' already exists",
+    });
+
+    renderForm();
+
+    await user.type(screen.getByLabelText(/placa/i), "ABC123");
+    await user.type(screen.getByLabelText(/vin/i), "1HGCM82633A004352");
     await user.click(screen.getByRole("button", { name: /registrar vehículo/i }));
 
     await waitFor(() => {
@@ -242,6 +265,67 @@ describe("Vehicle register form", () => {
     await waitFor(() => {
       expect(mockRegister).toHaveBeenCalledWith(
         expect.objectContaining({ versionId: "v1" }),
+      );
+    });
+  });
+
+  // ── D-07 (Gap 1): kilometraje inicial (alta de 0 km por concesionaria) ────
+
+  it("en PERSONAL no muestra el kilometraje inicial y lo omite del payload (D-07)", async () => {
+    const user = userEvent.setup();
+    mockListBrands.mockResolvedValue([]);
+    mockRegister.mockResolvedValue({ id: "v1", licensePlate: "ABC123" });
+    mockRefreshSession.mockResolvedValue(undefined);
+
+    renderForm();
+
+    await user.type(screen.getByLabelText(/placa/i), "ABC123");
+    expect(
+      screen.queryByLabelText(/kilometraje inicial/i),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /registrar vehículo/i }));
+
+    await waitFor(() => {
+      expect(mockRegister).toHaveBeenCalledTimes(1);
+    });
+    const payload = mockRegister.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("initialMileage");
+  });
+
+  it("en DEALERSHIP exige el kilometraje inicial (D-07)", async () => {
+    const user = userEvent.setup();
+    selectDealership("d1");
+    mockListBrands.mockResolvedValue([]);
+
+    renderForm();
+
+    await screen.findByLabelText(/kilometraje inicial/i);
+    await user.type(screen.getByLabelText(/placa/i), "ABC123");
+    await user.click(screen.getByRole("button", { name: /registrar vehículo/i }));
+
+    expect(
+      await screen.findByText("Ingresá el kilometraje inicial."),
+    ).toBeInTheDocument();
+    expect(mockRegister).not.toHaveBeenCalled();
+  });
+
+  it("en DEALERSHIP envía initialMileage (incluido 0 km) (D-07)", async () => {
+    const user = userEvent.setup();
+    selectDealership("d1");
+    mockListBrands.mockResolvedValue([]);
+    mockRegister.mockResolvedValue({ id: "v1", licensePlate: "ABC123" });
+    mockRefreshSession.mockResolvedValue(undefined);
+
+    renderForm();
+
+    const mileageInput = await screen.findByLabelText(/kilometraje inicial/i);
+    await user.type(screen.getByLabelText(/placa/i), "ABC123");
+    await user.type(mileageInput, "0");
+    await user.click(screen.getByRole("button", { name: /registrar vehículo/i }));
+
+    await waitFor(() => {
+      expect(mockRegister).toHaveBeenCalledWith(
+        expect.objectContaining({ licensePlate: "ABC123", initialMileage: 0 }),
       );
     });
   });

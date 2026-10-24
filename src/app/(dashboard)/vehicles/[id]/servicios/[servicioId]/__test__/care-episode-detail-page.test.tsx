@@ -232,7 +232,7 @@ describe("CareEpisode detail page (iteración 2-4)", () => {
     expect(back).toHaveAttribute("href", "/vehicles/v1");
   });
 
-  it("5xx → mensaje genérico + Reintentar refetchea", async () => {
+  it("5xx → mensaje de error del servidor + Reintentar refetchea", async () => {
     const user = userEvent.setup();
     mockGetDetail
       .mockRejectedValueOnce({ status: 500, message: "Server error" })
@@ -244,7 +244,7 @@ describe("CareEpisode detail page (iteración 2-4)", () => {
       await screen.findByText("No se pudo cargar el servicio"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/no se pudo completar la acción/i),
+      screen.getByText(/el servidor tuvo un problema/i),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /reintentar/i }));
@@ -464,6 +464,12 @@ describe("CareEpisode detail page (iteración 2-4)", () => {
       file: f2,
       phase: "after",
     });
+
+    // Regresión ERR_ALPN_NEGOTIATION_FAILED: cada upload va con SOLO 2
+    // argumentos (id, dto). Pasar un callback de progreso haría que ky envíe un
+    // body streamed (`duplex: 'half'`) que rompe sobre HTTP/1.1 (ver api.ts).
+    expect(mockUpload.mock.calls[0]).toHaveLength(2);
+    expect(mockUpload.mock.calls[1]).toHaveLength(2);
 
     expect(
       await screen.findByText("2 imágenes subidas"),

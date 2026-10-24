@@ -627,7 +627,8 @@ describe("Registrar servicio — evidencia en la creación (iteración 2-4)", ()
     expect(mockCreateOwnerWithFiles).toHaveBeenCalledTimes(1);
     expect(mockCreateOwner).not.toHaveBeenCalled();
 
-    const [input, files, , onProgress] = mockCreateOwnerWithFiles.mock.calls[0];
+    const [input, files, captions, onProgress] =
+      mockCreateOwnerWithFiles.mock.calls[0];
     expect(input).toMatchObject({
       vehicleId: "v1",
       title: "Cambio de aceite + 2 neumáticos",
@@ -635,7 +636,13 @@ describe("Registrar servicio — evidencia en la creación (iteración 2-4)", ()
       workshopName: "Taller de la esquina",
     });
     expect(files).toEqual([file]);
-    expect(typeof onProgress).toBe("function");
+    expect(captions).toBeUndefined();
+    // Regresión ERR_ALPN_NEGOTIATION_FAILED: la creación multipart NO debe
+    // recibir callback de progreso. En ky, `onUploadProgress` fuerza el body a
+    // viajar como stream (`duplex: 'half'`) y Chromium solo lo permite sobre
+    // HTTP/2 o HTTP/3; sobre HTTP/1.1 la request falla. Debe ir buffered.
+    expect(onProgress).toBeUndefined();
+    expect(mockCreateOwnerWithFiles.mock.calls[0]).toHaveLength(3);
   });
 
   it("sin fotos adjuntas → JSON histórico (createOwnerCareEpisode) y sin multipart", async () => {
@@ -700,5 +707,34 @@ describe("Registrar servicio — evidencia en la creación (iteración 2-4)", ()
     ).toBeInTheDocument();
     expect(screen.queryByText(/f0\.jpg/)).not.toBeInTheDocument();
     expect(mockCreateOwner).not.toHaveBeenCalled();
+  });
+
+  it("regresión FileList vivo: acumula los archivos aunque limpiar el input vacíe la selección", () => {
+    // El FileList de un <input type="file"> es VIVO en los navegadores:
+    // asignar `value = ""` vacía la selección. happy-dom no lo simula, por
+    // eso el bug (leer files DESPUÉS de limpiar) pasaba invisible en test.
+    renderPage();
+
+    const input = screen.getByTestId("owner-evidence-input");
+    const file = new File(["a"], "foto-viva.jpg", { type: "image/jpeg" });
+    let liveList: File[] = [file];
+
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      get: () => liveList,
+    });
+    Object.defineProperty(input, "value", {
+      configurable: true,
+      get: () => "",
+      set: () => {
+        liveList = [];
+      },
+    });
+
+    fireEvent.change(input);
+
+    expect(
+      screen.getByTestId("evidence-file-foto-viva.jpg"),
+    ).toBeInTheDocument();
   });
 });

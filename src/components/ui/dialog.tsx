@@ -47,6 +47,31 @@ const DialogPopup = React.forwardRef<
 ))
 DialogPopup.displayName = "DialogPopup"
 
+/**
+ * Variante full-screen oscura para el visor de fotos / preview de documentos
+ * (F-013 visualización, mobile-first). Mismo patrón de wrapper
+ * (Portal + Backdrop + Popup) que DialogPopup, sin estilos de card.
+ */
+const DialogPopupFullScreen = React.forwardRef<
+  React.ComponentRef<typeof DialogPrimitive.Popup>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Popup>
+>(({ className, children, ...props }, ref) => (
+  <DialogPortal>
+    <DialogBackdrop className="bg-black/90 backdrop-blur-sm" />
+    <DialogPrimitive.Popup
+      ref={ref}
+      className={cn(
+        "fixed inset-0 z-50 flex translate-x-0 translate-y-0 flex-col bg-black text-white outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </DialogPrimitive.Popup>
+  </DialogPortal>
+))
+DialogPopupFullScreen.displayName = "DialogPopupFullScreen"
+
 const DialogTitle = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
@@ -77,6 +102,7 @@ export {
   DialogPortal,
   DialogBackdrop,
   DialogPopup,
+  DialogPopupFullScreen,
   DialogTitle,
   DialogDescription,
   DialogClose,

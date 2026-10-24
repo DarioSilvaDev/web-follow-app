@@ -350,8 +350,9 @@ describe("Vehicle edit form", () => {
     // La versión no se tocó (prefill v9) → NO viaja versionId (RF-2/D-043).
     expect(payload.versionId).toBeUndefined();
     expect(JSON.stringify(payload)).not.toContain("versionId");
-    // Un campo con valor sigue viajando.
-    expect(payload).toHaveProperty("vin", "WVW123");
+    // D-03 (Gap 1): el VIN ya NO se edita por PATCH.
+    expect(payload).not.toHaveProperty("vin");
+    expect(JSON.stringify(payload)).not.toContain('"vin"');
   });
 
   it("omits a field that was already empty in the prefill (no noise, D-043 RF-8)", async () => {
@@ -413,9 +414,10 @@ describe("Vehicle edit form", () => {
     expect(payload).toHaveProperty("color", "Azul");
     expect(payload).toHaveProperty("notes", "Nueva nota");
     expect(payload).toHaveProperty("licensePlate", "ABC123");
-    expect(payload).toHaveProperty("vin", "WVW123");
     expect(payload).toHaveProperty("manufactureYear", 2020);
     expect(payload).toHaveProperty("modelYear", 2021);
+    // D-03 (Gap 1): el VIN nunca viaja en el PATCH.
+    expect(payload).not.toHaveProperty("vin");
     // versionId sin cambio → NO viaja (D-043).
     expect(payload.versionId).toBeUndefined();
     expect(JSON.stringify(payload)).not.toContain("versionId");

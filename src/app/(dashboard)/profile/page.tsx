@@ -22,6 +22,7 @@ import { useChangePassword } from "@/hooks/use-password-reset";
 import { useAuth } from "@/hooks/use-auth";
 import { usersApi } from "@/lib/api";
 import { resolveAliasErrorMessage } from "@/lib/transfer-errors";
+import { PersonalInfoCard } from "./personal-info-card";
 
 const changePasswordSchema = z
   .object({
@@ -274,6 +275,9 @@ export default function ProfilePage() {
           Gestiona tu información personal y seguridad.
         </p>
       </div>
+
+      {/* Datos personales (solo lectura, desde la sesión) — sección principal */}
+      <PersonalInfoCard />
 
       <AliasCard />
 

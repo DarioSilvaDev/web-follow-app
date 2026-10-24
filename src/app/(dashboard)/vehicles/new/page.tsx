@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
+import { useActiveContext } from "@/hooks/use-active-context";
 import { vehicleApi } from "@/lib/api";
 import {
   CONFLICT_MESSAGES,
@@ -31,6 +32,11 @@ export default function NewVehiclePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { refreshSession } = useAuth();
+  const activeContext = useActiveContext();
+
+  // D-07 (Gap 1): the "kilometraje inicial" is a DEALERSHIP-only concept
+  // (alta de 0 km por concesionaria). In PERSONAL the field is not rendered.
+  const isDealership = activeContext?.type === "DEALERSHIP";
 
   const [selectedBrandId, setSelectedBrandId] = useState("");
   const [selectedModelId, setSelectedModelId] = useState("");
@@ -77,8 +83,21 @@ export default function NewVehiclePage() {
 
   const onSubmit = async (data: VehicleFormValues) => {
     setSubmitError(null);
+
+    // D-07: in DEALERSHIP the initial mileage is mandatory. The schema cannot
+    // enforce it (it does not know the Active Context), so it is checked here.
+    if (isDealership && !data.initialMileage?.trim()) {
+      setError("initialMileage", {
+        type: "required",
+        message: "Ingresá el kilometraje inicial.",
+      });
+      return;
+    }
+
     try {
-      await vehicleApi.registerVehicle(toVehicleInput(data, selectedVersionId));
+      await vehicleApi.registerVehicle(
+        toVehicleInput(data, selectedVersionId, isDealership),
+      );
 
       // RF-7: force the list to refetch and refresh the session so the
       // dashboard reflects isVehicleOwner.
@@ -113,6 +132,20 @@ export default function NewVehiclePage() {
               "Ya existe un vehículo registrado con esos datos.",
           );
         }
+        return;
+      }
+
+      // D-07: a rejection mentioning the mileage is surfaced on that field.
+      if (apiError.status === 400) {
+        const message = apiError.message ?? "";
+        if (/kilo|mileage|initialMileage/i.test(message)) {
+          setError("initialMileage", {
+            type: "server",
+            message: message || "Kilometraje inicial inválido.",
+          });
+          return;
+        }
+        setSubmitError(message || "Datos inválidos. Revisá el formulario.");
         return;
       }
 
@@ -265,7 +298,7 @@ export default function NewVehiclePage() {
             </div>
 
             <div className="grid gap-2 sm:grid-cols-2">
-              <div className="grid gap-2">
+              {/* <div className="grid gap-2">
                 <Label htmlFor="manufactureYear">
                   Año de fabricación (opcional)
                 </Label>
@@ -283,7 +316,7 @@ export default function NewVehiclePage() {
                     {errors.manufactureYear.message}
                   </p>
                 )}
-              </div>
+              </div> */}
               <div className="grid gap-2">
                 <Label htmlFor="modelYear">Año del modelo (opcional)</Label>
                 <Input
@@ -302,6 +335,31 @@ export default function NewVehiclePage() {
                 )}
               </div>
             </div>
+
+            {isDealership && (
+              <div className="grid gap-2">
+                <Label htmlFor="initialMileage">Kilometraje inicial</Label>
+                <Input
+                  id="initialMileage"
+                  inputMode="numeric"
+                  placeholder="Ej. 0"
+                  autoComplete="off"
+                  aria-invalid={!!errors.initialMileage}
+                  {...register("initialMileage")}
+                />
+                {errors.initialMileage ? (
+                  <p className="text-sm text-destructive" role="alert">
+                    {errors.initialMileage.message}
+                  </p>
+                ) : (
+                  <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Para altas de 0 km desde una concesionaria. Se registra como
+                    el primer kilometraje del vehículo.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="grid gap-2">
               <Label htmlFor="color">Color (opcional)</Label>

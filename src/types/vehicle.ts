@@ -95,6 +95,17 @@ export interface VehicleDocument {
 }
 
 /**
+ * Opción del catálogo de tipos de documento vehicular
+ * (`GET /vehicles/documents/types`). Catálogo estático del backend: `value`
+ * es el identificador estable enviado en `documentType`; `label` es el texto
+ * para la UI. Hoy solo VTV; el backend lo extiende sin cambiar el contrato.
+ */
+export interface VehicleDocumentTypeOption {
+  value: string;
+  label: string;
+}
+
+/**
  * Mileage source enum — mirrors the Prisma `MileageSource` enum.
  */
 export type MileageSource =
@@ -104,6 +115,19 @@ export type MileageSource =
   | "dealership"
   | "imported"
   | "system";
+
+/**
+ * D-11 (Gap 1): autoría normalizada de un registro de kilometraje.
+ * El contrato HTTP NO expone las FKs internas de atribución (D-01); expone
+ * esta forma normalizada para no filtrar qué tabla (user/workshop/dealership)
+ * se usó. En `kind: "user"` viene el nombre; para organizaciones, el nombre
+ * de la organización (sin PII de empleados — precedente D-107).
+ */
+export interface VehicleMileageRecordedBy {
+  kind: "user" | "workshop" | "dealership";
+  id: string;
+  displayName: string;
+}
 
 /**
  * F-013: Vehicle mileage record.
@@ -116,6 +140,8 @@ export interface VehicleMileage {
   notes?: string | null;
   recordedAt: string;
   createdAt: string;
+  /** D-11 (Gap 1): autoría normalizada. Aditivo — puede faltar hasta el deploy. */
+  recordedBy?: VehicleMileageRecordedBy | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -299,8 +325,13 @@ export interface TransferQrRevokeResult {
  * y el `title` es `string | null` (el schema es nullable; el fallback de UI
  * vive en D-071).
  *
- * Fuente del nombre del taller (TL): `workshop?.name ?? workshopName`
- * (relación viva con fallback al snapshot de texto libre).
+ * Fuente del nombre del taller (PDP-3 / PROD-005): `workshopName ??
+ * workshop?.name` — **snapshot primero**, la relación viva solo como fallback.
+ * Para episodios `source: "owner"` no hay relación y prima el texto libre del
+ * usuario; para `source: "workshop"` prima el nombre congelado en la atención.
+ * Mismo orden que `get-care-episode.handler.ts` y que
+ * `servicios/[servicioId]/page.tsx`. Antes este documento y
+ * `vehicle-history.ts` invertían el orden y contradecían PROD-005.
  */
 export interface VehicleCareEpisode {
   id: string;
@@ -340,6 +371,22 @@ export interface VehicleHistoryResponse {
 // Vehicle response (base — used by list and detail)
 // ---------------------------------------------------------------------------
 
+/**
+ * D-12 (Gap 1): permisos calculados por el backend para ESTE vehículo y el
+ * usuario/contexto del request. El frontend los usa para habilitar acciones
+ * en lugar de derivarlos de `ownerships` (que no puede conocer las reglas de
+ * autorización de una concesionaria). El backend sigue siendo la frontera de
+ * enforcement: esto solo controla UX/visibilidad.
+ */
+export interface VehicleCapabilities {
+  /** Puede editar (PATCH) el vehículo. */
+  canEdit: boolean;
+  /** Puede registrar kilometraje. */
+  canRecordMileage: boolean;
+  /** Puede corregir el VIN (endpoint auditado, D-03). */
+  canCorrectVin: boolean;
+}
+
 export interface Vehicle {
   id: string;
   licensePlate: string;
@@ -363,8 +410,12 @@ export interface Vehicle {
   documents?: VehicleDocument[];
   /** F-013: Latest mileage records (from GET /:id, last 5). */
   mileages?: VehicleMileage[];
+  /** D-11 (Gap 1): total de registros de kilometraje (no solo los últimos 5). */
+  mileageCount?: number;
   /** Active ownerships (list) / all ownerships (detail). See VehicleOwnership. */
   ownerships?: VehicleOwnership[];
+  /** D-12 (Gap 1): capacidades calculadas por backend (GET /:id). */
+  capabilities?: VehicleCapabilities;
 }
 
 export interface VehicleListMeta {
@@ -405,6 +456,12 @@ export interface RegisterVehicleInput {
   modelYear?: number;
   color?: string;
   notes?: string;
+  /**
+   * D-07 (Gap 1): kilometraje inicial. OBLIGATORIO en contexto DEALERSHIP
+   * (alta de 0 km por concesionaria); en PERSONAL el backend lo rechaza si
+   * viaja, por eso `toVehicleInput` solo lo incluye en contexto DEALERSHIP.
+   */
+  initialMileage?: number;
 }
 
 /**
@@ -418,14 +475,25 @@ export interface RegisterVehicleInput {
  *
  * `versionId` NUNCA viaja null (omitir = no tocar la rama del catálogo, RF-2)
  * y `licensePlate` es obligatoria (nunca null).
+ *
+ * D-03 (Gap 1) — BREAKING: `vin` YA NO es editable por PATCH. El backend lo
+ * declara con `@IsEmpty()` y rechaza con 400. La corrección de VIN es un
+ * comando auditado aparte (`POST /vehicles/:id/vin-correction`), por eso el
+ * campo se elimina de esta superficie.
  */
 export interface UpdateVehicleInput {
   licensePlate?: string;
-  vin?: string | null;
   engineNumber?: string | null;
   versionId?: string;
   manufactureYear?: number | null;
   modelYear?: number | null;
   color?: string | null;
   notes?: string | null;
+}
+
+/** D-03 (Gap 1): body de `POST /vehicles/:id/vin-correction`. */
+export interface CorrectVinInput {
+  vin: string;
+  /** Motivo de la corrección — requerido para la auditoría (VehicleAuditLog). */
+  reason: string;
 }

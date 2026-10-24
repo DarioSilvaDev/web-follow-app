@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
@@ -21,6 +21,12 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.svg",
   },
+};
+
+// viewport-fit=cover: permite que env(safe-area-inset-*) funcione en iPhone
+// (barra inferior del visor de fotos/preview de documentos).
+export const viewport: Viewport = {
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

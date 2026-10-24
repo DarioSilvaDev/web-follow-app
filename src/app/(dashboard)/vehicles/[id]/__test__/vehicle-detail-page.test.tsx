@@ -38,6 +38,7 @@ const mockUploadPhoto = vi.fn();
 const mockSetPrimaryPhoto = vi.fn();
 const mockDeletePhoto = vi.fn();
 const mockListDocuments = vi.fn();
+const mockGetDocumentTypes = vi.fn();
 const mockUploadDocument = vi.fn();
 const mockUpdateDocument = vi.fn();
 const mockDeleteDocument = vi.fn();
@@ -52,6 +53,7 @@ vi.mock("@/lib/api", () => ({
     setPrimaryPhoto: (...args: unknown[]) => mockSetPrimaryPhoto(...args),
     deletePhoto: (...args: unknown[]) => mockDeletePhoto(...args),
     listDocuments: (...args: unknown[]) => mockListDocuments(...args),
+    getDocumentTypes: (...args: unknown[]) => mockGetDocumentTypes(...args),
     uploadDocument: (...args: unknown[]) => mockUploadDocument(...args),
     updateDocument: (...args: unknown[]) => mockUpdateDocument(...args),
     deleteDocument: (...args: unknown[]) => mockDeleteDocument(...args),
@@ -199,6 +201,10 @@ let VehicleDetailPage: React.ComponentType;
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  // Catálogo estático de tipos de documento (GET /vehicles/documents/types).
+  mockGetDocumentTypes.mockResolvedValue([
+    { value: "VTV", label: "VTV — Verificación Técnica Vehicular" },
+  ]);
   // F-014: default history is empty; the section renders "Sin eventos registrados".
   mockGetVehicleHistory.mockResolvedValue({
     transfers: [],
@@ -450,7 +456,7 @@ describe("Vehicle detail page", () => {
     });
   });
 
-  it("registers mileage with source owner and refetches the vehicle (F-013 D-048)", async () => {
+  it("registers mileage with { mileage, notes } and refetches the vehicle (D-11, Gap 1)", async () => {
     const user = userEvent.setup();
     mockGetVehicle.mockResolvedValue(makeVehicle());
     mockListPhotos.mockResolvedValue([]);
@@ -473,9 +479,10 @@ describe("Vehicle detail page", () => {
     await user.click(screen.getByRole("button", { name: /registrar km/i }));
 
     await waitFor(() => {
+      // D-11: el cliente ya NO envía `source` — el backend lo deriva del
+      // contexto activo (concesionaria u dueño).
       expect(mockRecordMileage).toHaveBeenCalledWith("v1", {
         mileage: 25100,
-        source: "owner",
         notes: "Cambio de aceite",
       });
     });
@@ -553,7 +560,8 @@ it("rejects invalid mileage input without calling the API", async () => {
     const docFileInput = screen.getByLabelText("Archivo") as HTMLInputElement;
     await user.upload(docFileInput, new File(["dummy"], "seguro.pdf", { type: "application/pdf" }));
     await user.type(screen.getByLabelText("Nombre"), "Seguro");
-    await user.type(screen.getByLabelText("Tipo"), "Seguro");
+    // Tipo es ahora un Select con el catálogo del backend (GET .../documents/types).
+    await user.selectOptions(screen.getByLabelText("Tipo (opcional)"), "VTV");
     // Vencimiento queda vacío → expiresAt undefined
     await user.click(screen.getByRole("button", { name: /subir documento/i }));
 
@@ -561,7 +569,7 @@ it("rejects invalid mileage input without calling the API", async () => {
       expect(mockUploadDocument).toHaveBeenCalledWith(
         "v1",
         expect.any(File),
-        { name: "Seguro", documentType: "Seguro", expiresAt: undefined },
+        { name: "Seguro", documentType: "VTV", expiresAt: undefined },
       );
     });
 
@@ -751,5 +759,129 @@ describe("Transferir button (Fase 1 / D-078)", () => {
     expect(
       screen.queryByRole("button", { name: "Transferir" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Capacidades del backend (Gap 1, D-12): el backend decide qué puede hacer el
+ * actor (`capabilities`) y el frontend solo refleja esa decisión. Se mantiene
+ * el fallback a ownership mientras un backend previo no envíe `capabilities`.
+ */
+describe("capabilities (Gap 1 / D-12)", () => {
+  it("habilita edición y kilometraje por capabilities aunque no haya ownership", async () => {
+    mockGetVehicle.mockResolvedValue(
+      makeVehicle({
+        ownerships: [],
+        capabilities: {
+          canEdit: true,
+          canRecordMileage: true,
+          canCorrectVin: false,
+        },
+      }),
+    );
+    mockListPhotos.mockResolvedValue([]);
+    mockListDocuments.mockResolvedValue([]);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { name: "ABC123" }),
+    ).toBeInTheDocument();
+    // La UI se basa en capabilities, no en ownership.
+    expect(screen.getByRole("link", { name: /editar/i })).toHaveAttribute(
+      "href",
+      "/vehicles/v1/edit",
+    );
+    expect(
+      screen.getByRole("button", { name: /registrar km/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /subir foto/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("capabilities.canEdit=false oculta edición aunque el usuario sea owner", async () => {
+    mockGetVehicle.mockResolvedValue(
+      makeVehicle({
+        capabilities: {
+          canEdit: false,
+          canRecordMileage: false,
+          canCorrectVin: false,
+        },
+      }),
+    );
+    mockListPhotos.mockResolvedValue(makeVehicle().photos);
+    mockListDocuments.mockResolvedValue(makeVehicle().documents);
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "ABC123" });
+    expect(
+      screen.queryByRole("link", { name: /editar/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /registrar km/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /subir foto/i }),
+    ).not.toBeInTheDocument();
+    // El historial de kilometraje sigue visible en modo lectura.
+    expect(screen.getAllByText("25.000 km").length).toBeGreaterThanOrEqual(1);
+  });
+
+  // Titular intermedio de concesionaria (D-107/RB-09).
+  const consignmentOwnerships = [
+    {
+      id: "o1",
+      vehicleId: "v1",
+      userId: null,
+      type: "company",
+      startsAt: "2026-09-09T00:00:00.000Z",
+      endsAt: null,
+      dealership: { id: "d1", name: "AutoSur", logoUrl: null },
+    },
+  ];
+
+  it("oculta el banner de consignación al miembro titular (canEdit true)", async () => {
+    mockGetVehicle.mockResolvedValue(
+      makeVehicle({
+        ownerships: consignmentOwnerships,
+        capabilities: {
+          canEdit: true,
+          canRecordMileage: true,
+          canCorrectVin: false,
+        },
+      }),
+    );
+    mockListPhotos.mockResolvedValue([]);
+    mockListDocuments.mockResolvedValue([]);
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "ABC123" });
+    expect(
+      screen.queryByText(/En consignación en/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("muestra el banner de consignación al lector (canEdit false)", async () => {
+    mockGetVehicle.mockResolvedValue(
+      makeVehicle({
+        ownerships: consignmentOwnerships,
+        capabilities: {
+          canEdit: false,
+          canRecordMileage: false,
+          canCorrectVin: false,
+        },
+      }),
+    );
+    mockListPhotos.mockResolvedValue([]);
+    mockListDocuments.mockResolvedValue([]);
+
+    renderPage();
+
+    const banner = await screen.findByText(/En consignación en/);
+    expect(banner.closest("[role='status']")).toBeInTheDocument();
+    expect(banner.parentElement).toHaveTextContent("AutoSur");
   });
 });

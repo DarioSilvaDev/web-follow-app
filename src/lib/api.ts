@@ -60,15 +60,20 @@ import type {
   WorkshopClaimResult,
 } from "@/types/invitation";
 import type {
+  CreateBranchInput,
+  UpdateWorkshopInput,
+  WorkshopBranch,
   WorkshopDetail,
   WorkshopSearchResult,
 } from "@/types/workshop";
 import type {
+  CorrectVinInput,
   RegisterVehicleInput,
   UpdateVehicleInput,
   Vehicle,
   VehicleBrand,
   VehicleDocument,
+  VehicleDocumentTypeOption,
   VehicleHistoryResponse,
   VehicleListResponse,
   VehicleMileage,
@@ -168,6 +173,16 @@ function injectActiveContextHeaders({ request }: { request: Request }): void {
 
 let isRefreshing = false;
 let refreshPromise: Promise<void> | null = null;
+
+/**
+ * Timeout para endpoints de upload (multipart). El global (10s) está pensado
+ * para requests JSON chicas; un upload incluye la transferencia del archivo
+ * + re-encode sharp + PutObject a R2/B2, y en conexiones lentas o storage
+ * degradado puede superar 10s → ky abortaría con TimeoutError (sin status
+ * HTTP, indistinguible de un fallo de red en UI). 30s cubre el caso real con
+ * margen sin dejar requests colgadas indefinidamente.
+ */
+const UPLOAD_TIMEOUT_MS = 30_000;
 
 export const api = ky.create({
   prefix: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api",
@@ -476,6 +491,19 @@ export const vehicleApi = {
       .json<Vehicle>()
       .catch(toApiError),
 
+  /**
+   * D-03 (Gap 1): POST /api/vehicles/:id/vin-correction → audited VIN fix.
+   *
+   * The backend command (Bloque B) is NOT deployed yet; the UI keeps this
+   * action behind `VIN_CORRECTION_ENABLED` (see `@/lib/feature-flags`).
+   * Contract: `{ vin, reason }` (reason is required for the audit log).
+   */
+  correctVin: (id: string, input: CorrectVinInput) =>
+    api
+      .post(`vehicles/${id}/vin-correction`, { json: input })
+      .json<Vehicle>()
+      .catch(toApiError),
+
   listBrands: () => api.get("vehicle-brands").json<VehicleBrand[]>().catch(toApiError),
 
   listModels: (brandId: string) =>
@@ -503,6 +531,19 @@ export const vehicleApi = {
       .json<VehiclePhoto[]>()
       .catch(toApiError),
 
+  /**
+   * GET vehicles/:id/photos/:photoId?signed=true → signed URL individual.
+   * Usado para refetch bajo demanda cuando la URL batch expiró (el visor
+   * no debe mostrar media con la URL vencida).
+   */
+  getPhotoSignedUrl: (vehicleId: string, photoId: string) =>
+    api
+      .get(`vehicles/${vehicleId}/photos/${photoId}`, {
+        searchParams: { signed: "true" },
+      })
+      .json<{ url: string; expiresAt: string }>()
+      .catch(toApiError),
+
   /** POST vehicles/:id/photos (multipart, field: file). Returns the new photo. */
   uploadPhoto: (
     vehicleId: string,
@@ -514,6 +555,7 @@ export const vehicleApi = {
     return api
       .post(`vehicles/${vehicleId}/photos`, {
         body: formData,
+        timeout: UPLOAD_TIMEOUT_MS,
         onUploadProgress: onProgress
           ? (event) => onProgress(Math.round(event.percent * 100))
           : undefined,
@@ -550,6 +592,29 @@ export const vehicleApi = {
       .catch(toApiError),
 
   /**
+   * GET vehicles/:id/documents/:docId?signed=true → signed URL individual
+   * ({ url, expiresAt }). Refetch bajo demanda cuando la URL batch expiró.
+   */
+  getDocumentSignedUrl: (vehicleId: string, docId: string) =>
+    api
+      .get(`vehicles/${vehicleId}/documents/${docId}`, {
+        searchParams: { signed: "true" },
+      })
+      .json<{ url: string; expiresAt: string }>()
+      .catch(toApiError),
+
+  /**
+   * GET vehicles/documents/types → catálogo estático de tipos de documento
+   * vehicular (`{ value, label }[]`, hoy solo VTV). Contrato aditivo del
+   * backend; se consume con staleTime largo (CATALOG_STALE_TIME).
+   */
+  getDocumentTypes: () =>
+    api
+      .get("vehicles/documents/types")
+      .json<VehicleDocumentTypeOption[]>()
+      .catch(toApiError),
+
+  /**
    * POST vehicles/:id/documents (multipart, field: file + name + documentType + expiresAt?).
    * Returns the new document.
    */
@@ -564,7 +629,10 @@ export const vehicleApi = {
     formData.append("documentType", dto.documentType);
     if (dto.expiresAt) formData.append("expiresAt", dto.expiresAt);
     return api
-      .post(`vehicles/${vehicleId}/documents`, { body: formData })
+      .post(`vehicles/${vehicleId}/documents`, {
+        body: formData,
+        timeout: UPLOAD_TIMEOUT_MS,
+      })
       .json<VehicleDocument>()
       .catch(toApiError);
   },
@@ -595,10 +663,16 @@ export const vehicleApi = {
   // F-013 — Mileage (D-048: write via assertVehicleOwned)
   // -----------------------------------------------------------------------
 
-  /** POST vehicles/:id/mileage → record mileage (monotonic, source: "owner" in MVP). */
+  /**
+   * POST vehicles/:id/mileage → record mileage (monotonic read-back).
+   *
+   * D-11 (Gap 1): the payload is `{ mileage, notes? }`. The backend derives
+   * `source`/`recordedBy` from the active context (dealer vs owner) — sending
+   * `source` from the client is no longer part of the contract.
+   */
   recordMileage: (
     vehicleId: string,
-    dto: { mileage: number; source: "owner"; notes?: string },
+    dto: { mileage: number; notes?: string },
   ) =>
     api
       .post(`vehicles/${vehicleId}/mileage`, { json: dto })
@@ -811,6 +885,13 @@ export const careEpisodeApi = {
    * S4: POST /care-episodes/:id/attachments — adjunta UNA imagen de evidencia
    * (contexto WORKSHOP + permiso `care-episode.attach`). Multipart con campo
    * `files` (single), `phase` requerido y `caption` opcional.
+   *
+   * NO acepta callback de progreso A PROPÓSITO (regresión
+   * ERR_ALPN_NEGOTIATION_FAILED): en ky, `onUploadProgress` reemplaza el body
+   * por un ReadableStream con `duplex: 'half'`, y Chromium solo permite
+   * streaming request bodies sobre HTTP/2 o HTTP/3 — sobre HTTP/1.1 la request
+   * falla con `net::ERR_ALPN_NEGOTIATION_FAILED`. Mantener el body buffered
+   * (el FormData tal cual). No reintroducir un parámetro de progreso.
    */
   uploadAttachment: (
     id: string,
@@ -819,7 +900,6 @@ export const careEpisodeApi = {
       phase: Exclude<CareEpisodeAttachmentPhase, null>;
       caption?: string;
     },
-    onProgress?: (percent: number) => void,
   ) => {
     const formData = new FormData();
     formData.append("files", dto.file);
@@ -830,9 +910,7 @@ export const careEpisodeApi = {
     return api
       .post(`care-episodes/${encodeURIComponent(id)}/attachments`, {
         body: formData,
-        onUploadProgress: onProgress
-          ? (event) => onProgress(Math.round(event.percent * 100))
-          : undefined,
+        timeout: UPLOAD_TIMEOUT_MS,
       })
       .json<CareEpisodeAttachment>()
       .catch(toApiError);
@@ -856,12 +934,16 @@ export const careEpisodeApi = {
    * propietario + evidencia opcional (máx. 5, captions index-matched,
    * phase=null → grupo General). El path JSON histórico (`createOwnerCareEpisode`)
    * queda intacto; esta ruta se usa cuando el form eligió archivos.
+   *
+   * NO acepta callback de progreso A PROPÓSITO (regresión
+   * ERR_ALPN_NEGOTIATION_FAILED): ver la nota de `uploadAttachment` —
+   * `onUploadProgress` fuerza un body streamed que rompe sobre HTTP/1.1.
+   * No reintroducir un parámetro de progreso.
    */
   createOwnerCareEpisodeWithFiles: (
     input: CreateOwnerCareEpisodeInput,
     files: File[],
     captions?: string[],
-    onProgress?: (percent: number) => void,
   ) => {
     const formData = new FormData();
     formData.append("vehicleId", input.vehicleId);
@@ -883,9 +965,7 @@ export const careEpisodeApi = {
     return api
       .post("care-episodes/owner", {
         body: formData,
-        onUploadProgress: onProgress
-          ? (event) => onProgress(Math.round(event.percent * 100))
-          : undefined,
+        timeout: UPLOAD_TIMEOUT_MS,
       })
       .json<CreateOwnerCareEpisodeResult>()
       .catch(toApiError);
@@ -917,11 +997,22 @@ export const careEpisodeApi = {
 };
 
 // ---------------------------------------------------------------------------
-// Workshop API methods (F-020 — branches del taller para el check-in)
+// Workshop API methods (F-020 — branches del taller para el check-in;
+// DECISION-REGISTER PROD-001 — auto-servicio "Mi taller")
 //
 // GET /workshops/:id (backend existente) exige membresía activa y devuelve las
 // branches activas (sede primero). Sin ContextGuard: tolera los headers de
 // contexto y valida por `userId` en el handler.
+//
+// Los writes (`PATCH /:id`, `POST /:id/branches`) ya existían en backend con
+// permisos seedeados al rol `owner` (`workshop.update`, `workshop.branch.create`)
+// y hasta ahora no se consumían: el dueño del taller no tenía forma de mantener
+// sus datos ni de crear la primera sucursal.
+//
+// `POST /:id/branches/:branchId/hours` (`workshop.hours.set`) NO se expone acá a
+// propósito: existe un setter pero no un getter de horarios, y escribir sin
+// poder leer preclude sobrescribir a ciegas. Se agrega junto con el resto del
+// CRUD de sucursales, cuando exista el endpoint de lectura (`BE-002`).
 // ---------------------------------------------------------------------------
 
 export const workshopApi = {
@@ -930,6 +1021,33 @@ export const workshopApi = {
     api
       .get(`workshops/${id}`)
       .json<WorkshopDetail>()
+      .catch(toApiError),
+
+  /**
+   * PATCH /workshops/:id → `UpdateWorkshopDto`.
+   *
+   * El handler devuelve la entidad `Workshop` **sin `branches` embebidas**: para
+   * obtener la lista de sucursales hay que volver a llamar a `getWorkshop`.
+   * Los campos opcionales aceptan `null` para limpiar el valor.
+   */
+  updateWorkshop: (id: string, input: UpdateWorkshopInput) =>
+    api
+      .patch(`workshops/${id}`, { json: input })
+      .json<WorkshopDetail>()
+      .catch(toApiError),
+
+  /**
+   * POST /workshops/:id/branches → `CreateBranchDto`. Crea una sucursal.
+   * Devuelve la entidad `WorkshopBranch` creada.
+   *
+   * Es el camino que hoy falta por completo: sin él, un taller recién onboardeado
+   * no puede registrar su primera atención (`/atenciones/nueva` exige al menos
+   * una sucursal activa para habilitar el submit).
+   */
+  createBranch: (workshopId: string, input: CreateBranchInput) =>
+    api
+      .post(`workshops/${workshopId}/branches`, { json: input })
+      .json<WorkshopBranch>()
       .catch(toApiError),
 
   /**

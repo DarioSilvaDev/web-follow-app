@@ -452,6 +452,40 @@ describe("API client — vehicleApi", () => {
     expect(refreshCalls).toHaveLength(0);
   });
 
+  it("correctVin POSTs { vin, reason } to the audited correction route (D-03)", async () => {
+    let requestBody: unknown;
+    fetchSpy.mockImplementation(async (input, init) => {
+      const { url, method } = extractFetchInfo(input, init);
+      capturedRequests.push({ url, method });
+      if (input instanceof Request) {
+        requestBody = JSON.parse(await input.clone().text());
+      } else if (init?.body) {
+        requestBody = JSON.parse(String(init.body));
+      }
+      return makeResponse(200, {
+        id: "v1",
+        licensePlate: "ABC123",
+        vin: "1HGCM82633A004352",
+        createdAt: "2026-09-09T00:00:00.000Z",
+        updatedAt: "2026-09-09T00:00:00.000Z",
+      });
+    });
+
+    const { vehicleApi } = await import("@/lib/api");
+    const result = await vehicleApi.correctVin("v1", {
+      vin: "1HGCM82633A004352",
+      reason: "Error de tipeo en el alta",
+    });
+
+    expect(result.vin).toBe("1HGCM82633A004352");
+    expect(capturedRequests[0].url).toContain("vehicles/v1/vin-correction");
+    expect(capturedRequests[0].method).toBe("POST");
+    expect(requestBody).toEqual({
+      vin: "1HGCM82633A004352",
+      reason: "Error de tipeo en el alta",
+    });
+  });
+
   it("listModels sends brandId as a query param", async () => {
     fetchSpy.mockImplementation(async (input, init) => {
       const { url, method } = extractFetchInfo(input, init);
@@ -611,6 +645,74 @@ describe("API client — vehicleApi", () => {
     expect(photoCalls).toHaveLength(1);
     expect(photoCalls[0].method).toBe("GET");
     expect(photoCalls[0].url).toContain("signed=true");
+  });
+
+  it("getPhotoSignedUrl fetches an individual signed URL (F-013 visualización)", async () => {
+    fetchSpy.mockImplementation(async (input, init) => {
+      const { url, method } = extractFetchInfo(input, init);
+      capturedRequests.push({ url, method });
+      return makeResponse(200, {
+        url: "https://signed.example/p1-fresh",
+        expiresAt: "2026-09-10T01:00:00.000Z",
+      });
+    });
+
+    const { vehicleApi } = await import("@/lib/api");
+    const result = await vehicleApi.getPhotoSignedUrl("v1", "p1");
+
+    expect(result.url).toBe("https://signed.example/p1-fresh");
+    const call = capturedRequests.find((r) =>
+      r.url.includes("vehicles/v1/photos/p1"),
+    );
+    expect(call).toBeDefined();
+    expect(call!.method).toBe("GET");
+    expect(call!.url).toContain("signed=true");
+  });
+
+  it("getDocumentSignedUrl fetches an individual signed URL (F-013 visualización)", async () => {
+    fetchSpy.mockImplementation(async (input, init) => {
+      const { url, method } = extractFetchInfo(input, init);
+      capturedRequests.push({ url, method });
+      return makeResponse(200, {
+        url: "https://signed.example/d1-fresh",
+        expiresAt: "2026-09-10T01:00:00.000Z",
+      });
+    });
+
+    const { vehicleApi } = await import("@/lib/api");
+    const result = await vehicleApi.getDocumentSignedUrl("v1", "d1");
+
+    expect(result.url).toBe("https://signed.example/d1-fresh");
+    const call = capturedRequests.find((r) =>
+      r.url.includes("vehicles/v1/documents/d1"),
+    );
+    expect(call).toBeDefined();
+    expect(call!.method).toBe("GET");
+    expect(call!.url).toContain("signed=true");
+  });
+
+  it("getDocumentTypes fetches the static document type catalog", async () => {
+    fetchSpy.mockImplementation(async (input, init) => {
+      const { url, method } = extractFetchInfo(input, init);
+      capturedRequests.push({ url, method });
+      return makeResponse(200, [
+        { value: "VTV", label: "VTV — Verificación Técnica Vehicular" },
+      ]);
+    });
+
+    const { vehicleApi } = await import("@/lib/api");
+    const result = await vehicleApi.getDocumentTypes();
+
+    expect(result).toEqual([
+      { value: "VTV", label: "VTV — Verificación Técnica Vehicular" },
+    ]);
+    const call = capturedRequests.find((r) =>
+      r.url.includes("vehicles/documents/types"),
+    );
+    expect(call).toBeDefined();
+    expect(call!.method).toBe("GET");
+    // El catálogo es un endpoint plano, sin vehicleId ni signed query.
+    expect(call!.url).not.toContain("signed=");
   });
 
   it("uploadPhoto POSTs a multipart form with the file field (F-013)", async () => {
@@ -838,7 +940,7 @@ describe("API client — vehicleApi", () => {
 
   // ── F-013: Mileage ───────────────────────────────────────────────────────
 
-  it("recordMileage POSTs { mileage, source: 'owner', notes } (F-013 D-048)", async () => {
+  it("recordMileage POSTs { mileage, notes } (D-11 — source lo deriva el backend)", async () => {
     let requestBody: unknown;
     fetchSpy.mockImplementation(async (input, init) => {
       const { url, method } = extractFetchInfo(input, init);
@@ -862,7 +964,6 @@ describe("API client — vehicleApi", () => {
     const { vehicleApi } = await import("@/lib/api");
     const result = await vehicleApi.recordMileage("v1", {
       mileage: 25000,
-      source: "owner",
       notes: "Cambio de aceite",
     });
 
@@ -872,7 +973,6 @@ describe("API client — vehicleApi", () => {
     expect(capturedRequests[0].method).toBe("POST");
     expect(requestBody).toEqual({
       mileage: 25000,
-      source: "owner",
       notes: "Cambio de aceite",
     });
   });
@@ -888,7 +988,7 @@ describe("API client — vehicleApi", () => {
     const { vehicleApi } = await import("@/lib/api");
 
     await expect(
-      vehicleApi.recordMileage("v1", { mileage: 1000, source: "owner" }),
+      vehicleApi.recordMileage("v1", { mileage: 1000 }),
     ).rejects.toMatchObject({
       status: 400,
       code: "VALIDATION_ERROR",
@@ -1297,5 +1397,93 @@ describe("API client — iteración 2-2 (owner service + verification)", () => {
         status: 429,
       },
     );
+  });
+});
+
+// ── Regresión ERR_ALPN_NEGOTIATION_FAILED: uploads sin streaming ─────────────
+
+/**
+ * Los dos endpoints de subida de evidencia (`uploadAttachment` y
+ * `createOwnerCareEpisodeWithFiles`) NO deben aceptar un callback de progreso.
+ *
+ * Motivo: en ky, `onUploadProgress` reemplaza el body por un ReadableStream con
+ * `duplex: 'half'`, y Chromium solo permite streaming request bodies sobre
+ * HTTP/2 o HTTP/3 — sobre HTTP/1.1 la request falla con
+ * `net::ERR_ALPN_NEGOTIATION_FAILED`. El body debe viajar buffered (FormData).
+ *
+ * Nota (verificado contra ky 2.1.0 en node_modules): ky SIEMPRE marca
+ * `duplex: 'half'` en el Request, aun sin progress, así que la única señal
+ * fiable del problema es la ausencia del parámetro de progreso. Estos tests lo
+ * protegen de forma estructural (aridad) y funcional (el multipart sigue
+ * enviándose bien).
+ */
+describe("API client — uploads sin streaming (ERR_ALPN_NEGOTIATION_FAILED)", () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+  let capturedRequests: Array<{ url: string; method: string }>;
+
+  beforeEach(() => {
+    capturedRequests = [];
+    vi.resetModules();
+
+    fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const { url, method } = extractFetchInfo(input, init);
+      capturedRequests.push({ url, method });
+      return makeResponse(200, {
+        id: "e1",
+        attachments: [],
+        attachmentCount: 0,
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchSpy);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("uploadAttachment declara 2 parámetros (id, dto): sin callback de progreso", async () => {
+    const { careEpisodeApi } = await import("@/lib/api");
+    // Si alguien reintroduce `onProgress`, la aridad sube y este test falla.
+    expect(careEpisodeApi.uploadAttachment.length).toBe(2);
+  });
+
+  it("createOwnerCareEpisodeWithFiles declara 3 parámetros: sin callback de progreso", async () => {
+    const { careEpisodeApi } = await import("@/lib/api");
+    expect(careEpisodeApi.createOwnerCareEpisodeWithFiles.length).toBe(3);
+  });
+
+  it("uploadAttachment sigue enviando el multipart (files + phase)", async () => {
+    const { careEpisodeApi } = await import("@/lib/api");
+    const file = new File(["a"], "evidencia.jpg", { type: "image/jpeg" });
+
+    await careEpisodeApi.uploadAttachment("e1", {
+      file,
+      phase: "after",
+      caption: "Frente",
+    });
+
+    expect(capturedRequests).toHaveLength(1);
+    expect(capturedRequests[0].method).toBe("POST");
+    expect(capturedRequests[0].url).toContain("care-episodes/e1/attachments");
+  });
+
+  it("createOwnerCareEpisodeWithFiles sigue enviando el multipart a /care-episodes/owner", async () => {
+    const { careEpisodeApi } = await import("@/lib/api");
+    const file = new File(["a"], "evidencia.jpg", { type: "image/jpeg" });
+
+    await careEpisodeApi.createOwnerCareEpisodeWithFiles(
+      {
+        vehicleId: "v1",
+        title: "Cambio de aceite",
+        serviceDate: "2026-06-15",
+      },
+      [file],
+    );
+
+    expect(capturedRequests).toHaveLength(1);
+    expect(capturedRequests[0].method).toBe("POST");
+    expect(capturedRequests[0].url).toContain("care-episodes/owner");
   });
 });

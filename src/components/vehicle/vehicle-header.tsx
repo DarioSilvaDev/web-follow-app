@@ -8,7 +8,16 @@ import type { Vehicle } from "@/types/vehicle";
 
 interface VehicleHeaderProps {
   vehicle: Vehicle;
-  isOwner?: boolean;
+  /**
+   * D-12 (Gap 1): capacidad de edición calculada por el backend para este
+   * usuario/contexto. Controla el botón "Editar" (ownership ≠ access).
+   */
+  canEdit?: boolean;
+  /**
+   * F-013 §7: muestra el badge "Acceso compartido" cuando el usuario NO es el
+   * titular (relación de propiedad). Concepto distinto de `canEdit`.
+   */
+  showSharedBadge?: boolean;
 }
 
 function catalogLabel(vehicle: Vehicle): string | null {
@@ -18,7 +27,11 @@ function catalogLabel(vehicle: Vehicle): string | null {
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
-export function VehicleHeader({ vehicle, isOwner = false }: VehicleHeaderProps) {
+export function VehicleHeader({
+  vehicle,
+  canEdit = false,
+  showSharedBadge = false,
+}: VehicleHeaderProps) {
   const catalog = catalogLabel(vehicle);
   const latestMileage =
     vehicle.mileages && vehicle.mileages.length > 0
@@ -62,7 +75,7 @@ export function VehicleHeader({ vehicle, isOwner = false }: VehicleHeaderProps) 
                 {/* F-013 §7 / D-048: badge "Acceso compartido" para non-owners
                     (documentado en DECISION-REGISTER §20; se restauró tras el
                     refactor a VehicleHeader en 2-3). */}
-                {!isOwner && (
+                {showSharedBadge && (
                   <Badge variant="secondary" className="text-xs font-medium">
                     Acceso compartido
                   </Badge>
@@ -101,7 +114,7 @@ export function VehicleHeader({ vehicle, isOwner = false }: VehicleHeaderProps) 
                 {latestMileage.mileage.toLocaleString("es-AR")} km
               </Badge>
             )}
-            {isOwner && (
+            {canEdit && (
               <Link href={`/vehicles/${vehicle.id}/edit`}>
                 <Button variant="outline" size="sm">
                   <Pencil className="mr-1.5 h-3.5 w-3.5" />

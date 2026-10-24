@@ -149,7 +149,17 @@ export function mergeHistory(history: VehicleHistoryResponse): TimelineEntry[] {
   // Iteración 2-3 (D-069..D-071): episodios owner + workshop. `?? []`
   // defensivo: si el backend aún no devuelve el 4º array, el merge no rompe.
   for (const care of history.careEpisodes ?? []) {
-    const workshopName = care.workshop?.name ?? care.workshopName ?? "";
+    // Precedencia: SNAPSHOT primero, relación viva solo como fallback
+    // (PDP-3 / PROD-005). Espejo de `get-care-episode.handler.ts` y de
+    // `servicios/[servicioId]/page.tsx:268`.
+    //
+    // Antes era `workshop?.name ?? workshopName`, lo opuesto al backend: eso
+    // hacía que renombrar un taller reescribiera el nombre en el timeline
+    // retroactivamente, contradiciendo PROD-005. Al tener todas las filas
+    // pre-fix con `workshopName = null`, el cambio es hoy un no-op y solo
+    // empieza a verse cuando el backend deje de escribir el snapshot.
+    const workshopName =
+      care.workshopName ?? care.workshop?.name ?? "";
 
     // Título: `title` presente → se usa; null → fallback por source (D-071).
     const baseTitle =

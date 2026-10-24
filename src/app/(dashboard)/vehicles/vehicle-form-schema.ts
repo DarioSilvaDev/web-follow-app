@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidVin, normalizeVin } from "@/lib/vin";
 import type {
   RegisterVehicleInput,
   UpdateVehicleInput,
@@ -12,6 +13,9 @@ import type {
 // validation (RF-5). Mirrors the backend RegisterVehicleDto (F-010 §9):
 // - D-037: alphanumeric plate 2–10, normalized to uppercase + trim.
 // - D-036: VIN optional. D-038: catalog optional.
+// - D-04/D-145 (Gap 1): VIN is validated with the shared format rule when
+//   present (register only — see `editVehicleFormSchema`).
+// - D-07 (Gap 1): `initialMileage` is captured only in DEALERSHIP context.
 // ---------------------------------------------------------------------------
 
 export const vehicleFormSchema = z.object({
@@ -25,7 +29,14 @@ export const vehicleFormSchema = z.object({
       "La placa solo puede contener letras y números",
     )
     .transform((value) => value.toUpperCase()),
-  vin: z.string().trim().optional(),
+  vin: z
+    .string()
+    .trim()
+    .optional()
+    .refine(
+      (value) => value === undefined || value === "" || isValidVin(value),
+      "El VIN debe tener 17 caracteres válidos (sin I, O ni Q).",
+    ),
   manufactureYear: z
     .string()
     .trim()
@@ -54,23 +65,57 @@ export const vehicleFormSchema = z.object({
     .optional(),
   color: z.string().trim().optional(),
   notes: z.string().trim().optional(),
+  /**
+   * D-07 (Gap 1): kilometraje inicial (alta de 0 km). Solo se renderiza y se
+   * exige en contexto DEALERSHIP; en PERSONAL el campo no existe en el form.
+   * Se mantiene como string (input controlado) y se valida el formato aquí;
+   * la obligatoriedad en DEALERSHIP la impone el submit (setError) porque el
+   * schema no conoce el Active Context.
+   */
+  initialMileage: z
+    .string()
+    .trim()
+    .optional()
+    .refine(
+      (value) => value === undefined || value === "" || /^\d+$/.test(value),
+      "El kilometraje inicial debe ser un número entero",
+    ),
 });
 
 export type VehicleFormValues = z.infer<typeof vehicleFormSchema>;
+
+/**
+ * D-03 (Gap 1): EDIT schema. The VIN is no longer editable through the form —
+ * the backend rejects it via PATCH (`@IsEmpty()`), so the field is omitted
+ * entirely (the edit page renders it as a read-only value + "Corregir VIN").
+ * `initialMileage` is a register-only concept. Everything else is shared.
+ */
+export const editVehicleFormSchema = vehicleFormSchema.omit({
+  vin: true,
+  initialMileage: true,
+});
+
+export type EditVehicleFormValues = z.infer<typeof editVehicleFormSchema>;
 
 /**
  * Build the register API payload, dropping empty optional fields (undefined
  * omitted). Register (F-010) ONLY — the edit flow (F-011) uses
  * `toEditVehicleInput` (D-043 sends explicit `null` for cleared optional
  * fields; register keeps empty optionals → undefined/omitted).
+ *
+ * D-07 (Gap 1): `initialMileage` is ONLY included in DEALERSHIP context. The
+ * backend rejects it otherwise (`@IsEmpty()` on the personal path), so we omit
+ * it entirely rather than relying on the caller to build the object by hand.
+ * D-04/D-145: the VIN is normalized before it travels.
  */
 export function toVehicleInput(
   data: VehicleFormValues,
   versionId: string,
+  isDealership = false,
 ): RegisterVehicleInput {
-  return {
+  const payload: RegisterVehicleInput = {
     licensePlate: data.licensePlate,
-    vin: data.vin || undefined,
+    vin: data.vin ? normalizeVin(data.vin) : undefined,
     versionId: versionId || undefined,
     manufactureYear: data.manufactureYear
       ? Number(data.manufactureYear)
@@ -79,6 +124,12 @@ export function toVehicleInput(
     color: data.color || undefined,
     notes: data.notes || undefined,
   };
+
+  if (isDealership && data.initialMileage) {
+    payload.initialMileage = Number(data.initialMileage);
+  }
+
+  return payload;
 }
 
 /**
@@ -120,19 +171,19 @@ function optionalYearOrNull(
  * omitted = the existing catalog branch is NOT touched (RF-2). `licensePlate`
  * is required and always travels with a value (never null).
  *
+ * D-03 (Gap 1): the VIN is NEVER part of this payload — the backend rejects it
+ * by PATCH and the correction goes through the audited command instead.
+ *
  * Register (F-010) keeps `toVehicleInput` — it never sends null.
  */
 export function toEditVehicleInput(
   original: Vehicle,
-  data: VehicleFormValues,
+  data: EditVehicleFormValues,
   versionId: string,
 ): UpdateVehicleInput {
   const originalValues = vehicleToFormValues(original);
 
   const payload: UpdateVehicleInput = { licensePlate: data.licensePlate };
-
-  const vin = optionalStringOrNull(data.vin, originalValues.vin);
-  if (vin !== undefined) payload.vin = vin;
 
   const color = optionalStringOrNull(data.color, originalValues.color);
   if (color !== undefined) payload.color = color;
@@ -164,11 +215,13 @@ export function toEditVehicleInput(
 /**
  * Map a loaded `Vehicle` (GET /:id, VehicleResponseDto) into form values.
  * Years are numbers in the API and free-text inputs in the form.
+ *
+ * D-03 (Gap 1): no `vin` — it is not editable through the form, so it is not a
+ * form value. The edit page renders it read-only from the loaded vehicle.
  */
-export function vehicleToFormValues(vehicle: Vehicle): VehicleFormValues {
+export function vehicleToFormValues(vehicle: Vehicle): EditVehicleFormValues {
   return {
     licensePlate: vehicle.licensePlate ?? "",
-    vin: vehicle.vin ?? "",
     manufactureYear: vehicle.manufactureYear?.toString() ?? "",
     modelYear: vehicle.modelYear?.toString() ?? "",
     color: vehicle.color ?? "",

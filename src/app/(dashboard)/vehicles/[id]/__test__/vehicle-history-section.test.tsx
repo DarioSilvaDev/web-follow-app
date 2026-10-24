@@ -208,6 +208,26 @@ const careWorkshop = {
   workshopName: "Libertad",
 };
 
+// PDP-3 / PROD-005: episodio con snapshot Y relación viva presentes, con
+// nombres distintos. Es el único caso que ejercita la precedencia; todos los
+// fixtures de arriba dejan uno de los dos en null, por lo que pasaban con
+// cualquiera de los dos órdenes — por eso la regla nunca se había protegido.
+const careSnapshotWins = {
+  id: "e4",
+  vehicleId: "v1",
+  title: null,
+  serviceDate: "2026-09-01T00:00:00.000Z",
+  status: "delivered",
+  source: "workshop",
+  verification: "verified",
+  mileageIn: null,
+  customerNotes: null,
+  checkedInAt: null,
+  createdAt: "2026-09-01T10:00:00.000Z",
+  workshop: { id: "w1", name: "Nombre Vigente Renombrado" },
+  workshopName: "Nombre En La Atencion",
+};
+
 let VehicleDetailPage: React.ComponentType;
 
 beforeEach(async () => {
@@ -377,6 +397,27 @@ describe("Vehicle detail — Historial section (F-014)", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Taller Libertad")).toBeInTheDocument();
     expect(screen.getByText("Presupuesto no aprobado")).toBeInTheDocument();
+  });
+
+  it("PDP-3: el snapshot gana sobre el nombre vivo del taller", async () => {
+    // PROD-005: renombrar un taller NO debe alterar el historial ya registrado.
+    // Si esta prueba falla, el timeline está mostrando el nombre vigente en vez
+    // del congelado en la atención.
+    mockGetVehicleHistory.mockResolvedValue({
+      transfers: [],
+      mileages: [],
+      ownerships: [],
+      careEpisodes: [careSnapshotWins],
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByText("Taller Nombre En La Atencion"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Taller Nombre Vigente Renombrado"),
+    ).not.toBeInTheDocument();
   });
 
   it("muestra el spinner mientras carga el historial (RF-6)", async () => {

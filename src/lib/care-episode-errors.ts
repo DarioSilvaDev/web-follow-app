@@ -39,9 +39,42 @@ function lowerMessage(error: unknown): string {
   return (careEpisodeErrorMessage(error) ?? "").toLowerCase();
 }
 
-/** Copy genérico 5xx/red/desconocido. */
+/** Copy genérico para statuses no mapeados (4xx desconocidos, etc.). */
 export const GENERIC_CARE_EPISODE_ERROR_MESSAGE =
   "No se pudo completar la acción. Intentalo nuevamente.";
+
+/**
+ * Copy para 5xx — el backend respondió pero falló (p. ej. INTERNAL_ERROR).
+ * Diferenciarlo de un fallo de red ayuda al usuario a saber si reintentar
+ * tiene sentido (5xx reintentable vs. conexión a revisar).
+ */
+export const SERVER_ERROR_CARE_EPISODE_ERROR_MESSAGE =
+  "El servidor tuvo un problema. Intentalo nuevamente en unos segundos.";
+
+/**
+ * Copy para fallo de red/timeout — la request no obtuvo respuesta HTTP.
+ * ky aborta por timeout (DOMException, sin `status`) y `toApiError` lo
+ * relanza tal cual; hasta ahora eso caía en el mismo fallback que un 500,
+ * confundiendo diagnóstico (reporte de bug de upload de evidencia S4).
+ */
+export const NETWORK_ERROR_CARE_EPISODE_ERROR_MESSAGE =
+  "No se pudo conectar con el servidor. Revisá tu conexión e intentalo nuevamente.";
+
+/**
+ * Fallback común de los resolvers: distingue 5xx (error del servidor) de un
+ * error sin status (red/timeout). Errores HTTP siempre llegan con `status`
+ * vía `toApiError`; los no-HTTP (abort, timeout) quedan sin él.
+ */
+function resolveGenericCareEpisodeError(error: unknown): string {
+  const status = careEpisodeErrorStatus(error);
+  if (status !== undefined && status >= 500) {
+    return SERVER_ERROR_CARE_EPISODE_ERROR_MESSAGE;
+  }
+  if (status === undefined) {
+    return NETWORK_ERROR_CARE_EPISODE_ERROR_MESSAGE;
+  }
+  return GENERIC_CARE_EPISODE_ERROR_MESSAGE;
+}
 
 /**
  * Mensaje de UI para la carga del detalle (GET /care-episodes/:id).
@@ -49,7 +82,7 @@ export const GENERIC_CARE_EPISODE_ERROR_MESSAGE =
  *   PERSONAL; el copy acompaña la pantalla terminal con Volver al vehículo).
  * - 403 → solo se alcanza en contextos sin acceso de lectura (WORKSHOP ajeno
  *   / falta de membresía); el backend traduce el resto a 404.
- * - resto (5xx/red) → genérico + Reintentar (refetch).
+ * - resto → fallback que distingue 5xx (server) de fallo de red (sin status).
  */
 export function resolveCareEpisodeDetailErrorMessage(error: unknown): string {
   if (isStatus(error, 404)) {
@@ -61,7 +94,7 @@ export function resolveCareEpisodeDetailErrorMessage(error: unknown): string {
   if (isStatus(error, 401)) {
     return "Tu sesión expiró. Volvé a iniciar sesión.";
   }
-  return GENERIC_CARE_EPISODE_ERROR_MESSAGE;
+  return resolveGenericCareEpisodeError(error);
 }
 
 /**
@@ -95,7 +128,7 @@ export function resolveAttachmentUploadErrorMessage(error: unknown): string {
     }
     return "El servicio está cerrado o verificado; no se pueden agregar evidencias.";
   }
-  return GENERIC_CARE_EPISODE_ERROR_MESSAGE;
+  return resolveGenericCareEpisodeError(error);
 }
 
 /**
@@ -124,5 +157,5 @@ export function resolveAttachmentDeleteErrorMessage(error: unknown): string {
   if (isStatus(error, 409)) {
     return "El servicio está cerrado o verificado; su evidencia no se puede modificar.";
   }
-  return GENERIC_CARE_EPISODE_ERROR_MESSAGE;
+  return resolveGenericCareEpisodeError(error);
 }

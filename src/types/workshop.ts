@@ -54,3 +54,46 @@ export interface WorkshopSearchResult {
   logoUrl?: string | null;
   city: string | null;
 }
+
+/**
+ * Inputs de auto-servicio del taller (DECISION-REGISTER PROD-001).
+ *
+ * Contratos ya existentes en backend y hasta ahora no consumidos por el
+ * frontend. Todos exigen `WorkshopGuard` + `PermissionsGuard`:
+ * - `PATCH /workshops/:id`        → `workshop.update`      (seed: rol `owner`)
+ * - `POST  /workshops/:id/branches` → `workshop.branch.create` (seed: rol `owner`)
+ *
+ * `PATCH` devuelve la entidad `Workshop` SIN `branches` embebidas: quien lo
+ * consuma debe volver a pedir `getWorkshop` si necesita la lista de sucursales.
+ */
+
+/** PATCH /api/workshops/:id → `UpdateWorkshopDto` (PartialType de CreateWorkshopDto). */
+export interface UpdateWorkshopInput {
+  name?: string;
+  legalName?: string | null;
+  taxId?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  description?: string | null;
+}
+
+/** POST /api/workshops/:id/branches → `CreateBranchDto`. Solo `name` es obligatorio. */
+export interface CreateBranchInput {
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  street?: string | null;
+  streetNumber?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+  /**
+   * Sede principal. El backend NO valida unicidad: marcar una segunda sede
+   * como principal es posible hoy. DECISION-REGISTER `BE-003` (pendiente)
+   * define el índice único parcial; el frontend debe reducir la posibilidad,
+   * no asumir la garantía.
+   */
+  isHeadquarters?: boolean;
+}

@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Info, Loader2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Info, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,15 +17,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { CorrectVinDialog } from "@/components/vehicle/correct-vin-dialog";
 import { vehicleApi } from "@/lib/api";
+import { VIN_CORRECTION_ENABLED } from "@/lib/feature-flags";
 import {
   CONFLICT_MESSAGES,
   conflictField,
+  editVehicleFormSchema,
   toEditVehicleInput,
-  vehicleFormSchema,
   vehicleToFormValues,
-  type VehicleFormValues,
+  type EditVehicleFormValues,
 } from "@/app/(dashboard)/vehicles/vehicle-form-schema";
+
+/** Banner transitorio inline (sin toast, patrón paneles del repo). */
+const BANNER_DURATION_MS = 4000;
 
 /** Read the API error status (apiClient throws { status, message, code }). */
 function errorStatus(error: unknown): number | undefined {
@@ -41,6 +46,16 @@ export default function EditVehiclePage() {
   const [selectedModelId, setSelectedModelId] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+  const [correctVinOpen, setCorrectVinOpen] = useState(false);
+  const [correctVinError, setCorrectVinError] = useState<string | null>(null);
+
+  // Banner transitorio — se auto-oculta tras BANNER_DURATION_MS.
+  useEffect(() => {
+    if (!banner) return;
+    const timer = setTimeout(() => setBanner(null), BANNER_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [banner]);
 
   // RF-5: once the prefilled catalog cascade is resolved, user edits take over.
   const prefillDoneRef = useRef(false);
@@ -61,8 +76,8 @@ export default function EditVehiclePage() {
     reset,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<VehicleFormValues>({
-    resolver: zodResolver(vehicleFormSchema),
+  } = useForm<EditVehicleFormValues>({
+    resolver: zodResolver(editVehicleFormSchema),
   });
 
   // Prefill text fields once the vehicle is loaded (RF-5).
@@ -147,7 +162,7 @@ export default function EditVehiclePage() {
     setSelectedVersionId("");
   };
 
-  const onSubmit = async (data: VehicleFormValues) => {
+  const onSubmit = async (data: EditVehicleFormValues) => {
     setSubmitError(null);
     // El form solo se renderiza con la precarga resuelta (RF-5); guard defensivo.
     if (!vehicleQuery.data) return;
@@ -171,15 +186,18 @@ export default function EditVehiclePage() {
         code?: string;
       };
 
-      // RF-6/D-041: 409 → mensaje junto al campo (placa/VIN) o general
-      // (engineNumber); los valores del formulario se conservan.
+      // RF-6/D-041: 409 → mensaje junto al campo (placa) o general; los valores
+      // del formulario se conservan. Este formulario ya NO envía `vin` (D-03),
+      // así que un 409 de VIN se surfacea como error general.
       if (apiError.status === 409) {
         const field = conflictField(apiError.message);
-        if (field === "licensePlate" || field === "vin") {
-          setError(field, {
+        if (field === "licensePlate") {
+          setError("licensePlate", {
             type: "conflict",
-            message: CONFLICT_MESSAGES[field],
+            message: CONFLICT_MESSAGES.licensePlate,
           });
+        } else if (field === "vin") {
+          setSubmitError(CONFLICT_MESSAGES.vin);
         } else if (field === "engineNumber") {
           setSubmitError(CONFLICT_MESSAGES.engineNumber);
         } else {
@@ -215,6 +233,50 @@ export default function EditVehiclePage() {
         apiError.message || "Error al editar el vehículo. Intentalo nuevamente.",
       );
     }
+  };
+
+  // ---------------------------------------------------------------------------
+  // D-03 (Gap 1): corrección de VIN como comando auditado aparte. Gateado por
+  // feature flag (endpoint backend Bloque B) + capability del vehículo.
+  // ---------------------------------------------------------------------------
+  const canCorrectVin =
+    VIN_CORRECTION_ENABLED && vehicle?.capabilities?.canCorrectVin === true;
+
+  const correctVinMutation = useMutation({
+    mutationFn: ({ vin, reason }: { vin: string; reason: string }) =>
+      vehicleApi.correctVin(id, { vin, reason }),
+    onSuccess: () => {
+      setCorrectVinOpen(false);
+      setCorrectVinError(null);
+      setBanner("VIN corregido.");
+      queryClient.invalidateQueries({ queryKey: ["vehicle", id] });
+      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+    },
+    onError: (error) => {
+      const apiError = error as { status?: number; message?: string };
+      if (apiError.status === 409) {
+        setCorrectVinError("Ya existe un vehículo registrado con ese VIN.");
+        return;
+      }
+      if (apiError.status === 403) {
+        setCorrectVinError("No tenés permiso para corregir el VIN.");
+        return;
+      }
+      if (apiError.status && apiError.status >= 500) {
+        setCorrectVinError(
+          "Error interno del servidor. Intentalo nuevamente.",
+        );
+        return;
+      }
+      setCorrectVinError(
+        apiError.message || "No se pudo corregir el VIN. Intentalo nuevamente.",
+      );
+    },
+  });
+
+  const handleCorrectVin = (vin: string, reason: string) => {
+    setCorrectVinError(null);
+    correctVinMutation.mutate({ vin, reason });
   };
 
   // Loading (precarga del form).
@@ -295,6 +357,15 @@ export default function EditVehiclePage() {
         </p>
       </div>
 
+      {banner && (
+        <p
+          role="status"
+          className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-foreground"
+        >
+          {banner}
+        </p>
+      )}
+
       <Card>
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <CardContent className="grid gap-4">
@@ -316,25 +387,32 @@ export default function EditVehiclePage() {
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="vin">VIN (opcional)</Label>
-              <Input
-                id="vin"
-                placeholder="Número de chasis"
-                autoComplete="off"
-                aria-invalid={!!errors.vin}
-                {...register("vin")}
-              />
-              {errors.vin ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {errors.vin.message}
-                </p>
-              ) : (
-                <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  Completar el VIN mejora la trazabilidad de la historia del
-                  vehículo (D-036).
-                </p>
-              )}
+              <Label htmlFor="vin">VIN</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="vin"
+                  value={vehicleQuery.data?.vin ?? ""}
+                  readOnly
+                  placeholder="Sin VIN registrado"
+                  className="flex-1"
+                />
+                {canCorrectVin && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCorrectVinOpen(true)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Corregir VIN
+                  </Button>
+                )}
+              </div>
+              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {canCorrectVin
+                  ? "El VIN no se edita directamente: usá “Corregir VIN” (queda auditado)."
+                  : "El VIN se asigna en el alta y no se edita desde este formulario."}
+              </p>
             </div>
 
             <div className="grid gap-3">
@@ -409,7 +487,7 @@ export default function EditVehiclePage() {
             </div>
 
             <div className="grid gap-2 sm:grid-cols-2">
-              <div className="grid gap-2">
+              {/* <div className="grid gap-2">
                 <Label htmlFor="manufactureYear">
                   Año de fabricación (opcional)
                 </Label>
@@ -427,7 +505,7 @@ export default function EditVehiclePage() {
                     {errors.manufactureYear.message}
                   </p>
                 )}
-              </div>
+              </div> */}
               <div className="grid gap-2">
                 <Label htmlFor="modelYear">Año del modelo (opcional)</Label>
                 <Input
@@ -487,6 +565,20 @@ export default function EditVehiclePage() {
           </CardFooter>
         </form>
       </Card>
+
+      {canCorrectVin && (
+        <CorrectVinDialog
+          open={correctVinOpen}
+          onOpenChange={(open) => {
+            setCorrectVinOpen(open);
+            if (!open) setCorrectVinError(null);
+          }}
+          currentVin={vehicleQuery.data?.vin}
+          isPending={correctVinMutation.isPending}
+          dialogError={correctVinError}
+          onConfirm={handleCorrectVin}
+        />
+      )}
     </div>
   );
 }

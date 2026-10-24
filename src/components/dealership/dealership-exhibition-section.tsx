@@ -17,6 +17,7 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Banknote, ImageIcon, RotateCcw, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -125,9 +126,12 @@ export function DealershipExhibitionSection({
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
+                  <Link
+                    href={`/vehicles/${vehicle.id}`}
+                    className="block truncate text-sm font-medium hover:underline"
+                  >
                     {vehicle.licensePlate}
-                  </p>
+                  </Link>
                   <p className="truncate text-sm text-muted-foreground">
                     {vehicleDescription(vehicle)}
                   </p>
