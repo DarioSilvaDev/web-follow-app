@@ -11,7 +11,7 @@ export interface AuthContextValue {
   status: AuthStatus;
   user: SessionUser | null;
   /** Reload session from /auth/me (called after login, etc.) */
-  refreshSession: () => Promise<void>;
+  refreshSession: () => Promise<SessionUser | null>;
   /** Load session and return the user (or null) */
   loadSession: () => Promise<SessionUser | null>;
   /** Clear session state (used after logout / refresh failure) */
@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshSession = useCallback(async () => {
-    await loadSession();
+    return await loadSession();
   }, [loadSession]);
 
   const clearSession = useCallback(() => {
