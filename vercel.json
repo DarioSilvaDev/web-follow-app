@@ -1,5 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://api-follow-app.onrender.com/api/:path*" }
+    { "source": "/api/:path*", "destination": "https://4rk90pjm-3001.brs.devtunnels.ms/api/:path*" }
   ]
 }
