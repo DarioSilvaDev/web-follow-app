@@ -24,15 +24,16 @@ interface VehicleCardProps {
  * Render the catalog triplet. D-038: without a catalog selection the UI
  * shows "—". The backend is migrating the list contract to denormalized
  * brand/model/version (F-010 §9), so missing values are tolerated.
+ * Exportado: lo reutilizan el selector y el hero del dashboard.
  */
-function catalogLabel(vehicle: Vehicle): string {
+export function catalogLabel(vehicle: Vehicle): string {
   const parts = [vehicle.brand, vehicle.model, vehicle.version].filter(
     (part): part is string => Boolean(part && part.trim()),
   );
   return parts.length > 0 ? parts.join(" ") : "—";
 }
 
-function yearsLabel(vehicle: Vehicle): string {
+export function yearsLabel(vehicle: Vehicle): string {
   const years = [vehicle.manufactureYear, vehicle.modelYear].filter(
     (year): year is number => typeof year === "number",
   );
