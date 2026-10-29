@@ -163,9 +163,8 @@ describe("Vehicle edit form", () => {
     expect((screen.getByLabelText(/vin/i) as HTMLInputElement).value).toBe(
       "WVW123",
     );
-    expect(
-      (screen.getByLabelText(/año de fabricación/i) as HTMLInputElement).value,
-    ).toBe("2020");
+    // "Año de fabricación" fue removido del form (campo comentado en la
+    // página); el prefill se valida sobre los campos visibles.
     expect(
       (screen.getByLabelText(/año del modelo/i) as HTMLInputElement).value,
     ).toBe("2021");
@@ -423,7 +422,10 @@ describe("Vehicle edit form", () => {
     expect(JSON.stringify(payload)).not.toContain("versionId");
   });
 
-  it("sends null (not 0 and not omitted) when manufactureYear is cleared (D-043 RF-8)", async () => {
+  // Nota: "Año de fabricación" fue removido del form (campo comentado en la
+  // página); el comportamiento D-043 (campo numérico vaciado → null, no 0 ni
+  // omitido) se valida sobre "Año del modelo", el numérico visible.
+  it("sends null (not 0 and not omitted) when modelYear is cleared (D-043 RF-8)", async () => {
     const user = userEvent.setup();
     mockGetVehicle.mockResolvedValue(makeVehicleDetail());
     mockCatalogQueries();
@@ -432,9 +434,9 @@ describe("Vehicle edit form", () => {
     renderPage();
 
     const year = (await screen.findByLabelText(
-      /año de fabricación/i,
+      /año del modelo/i,
     )) as HTMLInputElement;
-    expect(year.value).toBe("2020");
+    expect(year.value).toBe("2021");
     await user.clear(year);
 
     await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
@@ -447,11 +449,9 @@ describe("Vehicle edit form", () => {
       Record<string, unknown>,
     ];
     // Campo numérico vaciado con prefill con contenido → null (no 0, no omitido).
-    expect(payload).toHaveProperty("manufactureYear", null);
-    expect(payload.manufactureYear).not.toBe(0);
-    expect(payload.manufactureYear).not.toBeUndefined();
-    // modelYear sin tocar (con valor) → se envía como número.
-    expect(payload).toHaveProperty("modelYear", 2021);
+    expect(payload).toHaveProperty("modelYear", null);
+    expect(payload.modelYear).not.toBe(0);
+    expect(payload.modelYear).not.toBeUndefined();
     expect(payload).toHaveProperty("licensePlate", "ABC123");
   });
 });

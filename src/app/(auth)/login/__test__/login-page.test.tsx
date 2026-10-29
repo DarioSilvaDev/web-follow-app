@@ -17,7 +17,8 @@ const mockPush = vi.fn();
 const mockGetNextParam = vi.fn((): string | null => null);
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush }),
+  // La página redirige con router.replace (hardening de open redirect).
+  useRouter: () => ({ push: mockPush, replace: mockPush }),
   useSearchParams: () => ({
     get: (key: string) => {
       if (key === "next") return mockGetNextParam();
@@ -124,7 +125,9 @@ describe("Login page", () => {
     const user = userEvent.setup();
 
     mockLogin.mockResolvedValue({ user: {} });
-    mockRefreshSession.mockResolvedValue(undefined);
+    // El contrato actual de refreshSession devuelve el usuario (o null si
+    // falla); la página solo redirige con un usuario truthy.
+    mockRefreshSession.mockResolvedValue({ id: "u1" });
 
     render(<LoginPage />);
 
@@ -156,7 +159,9 @@ describe("Login page", () => {
     // Solo el deep link de QR está permitido como next (evita open redirect).
     mockGetNextParam.mockReturnValue("/vehicles/v1");
     mockLogin.mockResolvedValue({ user: {} });
-    mockRefreshSession.mockResolvedValue(undefined);
+    // El contrato actual de refreshSession devuelve el usuario (o null si
+    // falla); la página solo redirige con un usuario truthy.
+    mockRefreshSession.mockResolvedValue({ id: "u1" });
 
     render(<LoginPage />);
 
@@ -177,7 +182,9 @@ describe("Login page", () => {
     const user = userEvent.setup();
     mockGetNextParam.mockReturnValue("https://evil.example/phishing");
     mockLogin.mockResolvedValue({ user: {} });
-    mockRefreshSession.mockResolvedValue(undefined);
+    // El contrato actual de refreshSession devuelve el usuario (o null si
+    // falla); la página solo redirige con un usuario truthy.
+    mockRefreshSession.mockResolvedValue({ id: "u1" });
 
     render(<LoginPage />);
 
@@ -200,7 +207,9 @@ describe("Login page", () => {
     const user = userEvent.setup();
     mockGetNextParam.mockReturnValue("/transfer/qr/TOKEN123");
     mockLogin.mockResolvedValue({ user: {} });
-    mockRefreshSession.mockResolvedValue(undefined);
+    // El contrato actual de refreshSession devuelve el usuario (o null si
+    // falla); la página solo redirige con un usuario truthy.
+    mockRefreshSession.mockResolvedValue({ id: "u1" });
 
     render(<LoginPage />);
 
@@ -219,7 +228,9 @@ describe("Login page", () => {
   it("does NOT write tokens to localStorage or sessionStorage (D-001)", async () => {
     const user = userEvent.setup();
     mockLogin.mockResolvedValue({ user: {} });
-    mockRefreshSession.mockResolvedValue(undefined);
+    // El contrato actual de refreshSession devuelve el usuario (o null si
+    // falla); la página solo redirige con un usuario truthy.
+    mockRefreshSession.mockResolvedValue({ id: "u1" });
 
     render(<LoginPage />);
 
