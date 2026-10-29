@@ -209,6 +209,17 @@ export default function NewCareEpisodePage() {
       setCreatedEpisodeId(episode.id);
       setCreatedVehicleId(lookup.vehicle.id);
       setCreatedPlate(lookup.vehicle.licensePlate);
+      // Listado de atenciones del taller (`atenciones/page.tsx:125`): prefijo
+      // sin página para cubrir cualquier paginación ya cacheada.
+      if (workshopId) {
+        void queryClient.invalidateQueries({
+          queryKey: ["care-episode-list", workshopId],
+        });
+      }
+      // Historia del vehículo (`vehicles/[id]/page.tsx:489`).
+      void queryClient.invalidateQueries({
+        queryKey: ["vehicle", lookup.vehicle.id, "history"],
+      });
     } catch (error) {
       const apiError = error as { status?: number; message?: string };
       if (apiError.status === 403) {

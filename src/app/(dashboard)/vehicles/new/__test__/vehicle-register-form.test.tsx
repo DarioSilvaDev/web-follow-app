@@ -152,6 +152,10 @@ describe("Vehicle register form", () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["vehicles"] });
     });
+    // En PERSONAL no hay exhibición de concesionaria que invalidar.
+    expect(invalidateSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["vehicles", "dealership", "d1"] }),
+    );
     await waitFor(() => {
       expect(mockRefreshSession).toHaveBeenCalled();
     });
@@ -327,6 +331,44 @@ describe("Vehicle register form", () => {
       expect(mockRegister).toHaveBeenCalledWith(
         expect.objectContaining({ licensePlate: "ABC123", initialMileage: 0 }),
       );
+    });
+  });
+
+  // ── Regresión (bug QA): exhibición stale tras el alta en DEALERSHIP ────────
+  // El alta aterriza en /dealerships/{id}, cuya tab Exhibición lee
+  // ["vehicles","dealership", dealershipId]. Sin invalidar esa clave, el detalle
+  // remonta con el cache "fresh" (staleTime 30s) y el vehículo recién
+  // registrado no aparece hasta un F5.
+  it("en DEALERSHIP invalida la exhibición de la concesionaria y redirige a su detalle", async () => {
+    const user = userEvent.setup();
+    selectDealership("d1");
+    mockListBrands.mockResolvedValue([]);
+    mockRegister.mockResolvedValue({ id: "v1", licensePlate: "ABC123" });
+    mockRefreshSession.mockResolvedValue(undefined);
+
+    const { invalidateSpy } = renderForm();
+
+    const mileageInput = await screen.findByLabelText(/kilometraje inicial/i);
+    await user.type(screen.getByLabelText(/placa/i), "ABC123");
+    await user.type(mileageInput, "0");
+    await user.click(screen.getByRole("button", { name: /registrar vehículo/i }));
+
+    await waitFor(() => {
+      // `invalidateVehicleViews` invalida el prefijo raíz ["vehicles"], que
+      // cubre por jerarquía la Exhibición (["vehicles","dealership","d1"]):
+      // no hay una segunda llamada específica que recordar.
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["vehicles"],
+      });
+    });
+    // La clave de exhibición vive bajo el prefijo invalidado.
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: ["vehicles", "dealership", "d1"],
+    });
+    // Sigue invalidando la lista de vehículos (RF-7).
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["vehicles"] });
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/dealerships/d1");
     });
   });
 });

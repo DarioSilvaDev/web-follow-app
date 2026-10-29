@@ -159,11 +159,13 @@ function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+  render(
     <QueryClientProvider client={queryClient}>
       <NewCareEpisodePage />
     </QueryClientProvider>,
   );
+  return { invalidateSpy };
 }
 
 async function searchPlate(user: ReturnType<typeof userEvent.setup>, plate: string) {
@@ -190,7 +192,7 @@ describe("Nueva atención page (F-020)", () => {
     mockLookup.mockResolvedValue(makeVehicle());
     mockCreate.mockResolvedValue(makeEpisode());
 
-    renderPage();
+    const { invalidateSpy } = renderPage();
 
     // Normalización de placa (D-037/D-042): lowercase input → uppercase query
     await searchPlate(user, "abc123");
@@ -216,6 +218,14 @@ describe("Nueva atención page (F-020)", () => {
 
     expect(await screen.findByText(/Atención ingresada OK/i)).toBeInTheDocument();
     expect(screen.getByText(/vehículo ABC123/)).toBeInTheDocument();
+    // El listado de atenciones del taller (prefijo sin página) y la historia
+    // del vehículo se invalidan al crear el episodio.
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["care-episode-list", "w1"],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["vehicle", "v1", "history"],
+    });
     expect(mockCreate).toHaveBeenCalledWith({
       vehicleId: "v1",
       branchId: "b1",

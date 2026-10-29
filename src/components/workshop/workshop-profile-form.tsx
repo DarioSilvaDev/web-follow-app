@@ -142,6 +142,8 @@ export function WorkshopProfileForm({ workshop }: WorkshopProfileFormProps) {
       await queryClient.invalidateQueries({
         queryKey: ["workshop", workshop.id],
       });
+      // El listado `/workshops` muestra el nombre (`workshops/page.tsx:32`).
+      await queryClient.invalidateQueries({ queryKey: ["workshops-mine"] });
       reset({
         name: values.name.trim(),
         legalName: values.legalName?.trim() ?? "",
