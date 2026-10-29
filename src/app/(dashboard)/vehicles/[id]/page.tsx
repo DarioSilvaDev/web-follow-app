@@ -35,6 +35,7 @@ import { errorStatus } from "@/lib/api-error";
 import { MEDIA_STALE_TIME } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format-date";
 import { activeConsignmentDealership } from "@/lib/consignment";
+import { vehicleKeys } from "@/lib/query-keys";
 import { VehicleHeader } from "@/components/vehicle/vehicle-header";
 import { PhotosSection } from "@/components/vehicle/photos-section";
 import { DocumentsSection } from "@/components/vehicle/documents-section";
@@ -192,7 +193,7 @@ function MileageSection({
       setNotes("");
       setFormError(null);
       // GET /:id incluye los últimos 5 km — invalidar con el prefijo del vehículo.
-      queryClient.invalidateQueries({ queryKey: ["vehicle", vehicle.id] });
+      queryClient.invalidateQueries({ queryKey: vehicleKeys.detail(vehicle.id) });
     },
   });
 
@@ -463,13 +464,13 @@ export default function VehicleDetailPage() {
 
   // F-013 §5: 3 llamadas en paralelo (edición también usa ["vehicle", id]).
   const vehicleQuery = useQuery({
-    queryKey: ["vehicle", id],
+    queryKey: vehicleKeys.detail(id),
     queryFn: () => vehicleApi.getVehicle(id),
     retry: false,
   });
 
   const photosQuery = useQuery({
-    queryKey: ["vehicle", id, "photos"],
+    queryKey: [...vehicleKeys.detail(id), "photos"],
     queryFn: () => vehicleApi.listPhotos(id),
     retry: false,
     // URLs firmadas (~1 h en backend): 5 min evita refetch en cada mount.
@@ -477,7 +478,7 @@ export default function VehicleDetailPage() {
   });
 
   const documentsQuery = useQuery({
-    queryKey: ["vehicle", id, "documents"],
+    queryKey: [...vehicleKeys.detail(id), "documents"],
     queryFn: () => vehicleApi.listDocuments(id),
     retry: false,
     // Idem photosQuery — URLs firmadas con expiración.
@@ -486,7 +487,7 @@ export default function VehicleDetailPage() {
 
   // F-014 §5: 4ª llamada en paralelo (no bloquea la carga inicial del ficha).
   const historyQuery = useQuery({
-    queryKey: ["vehicle", id, "history"],
+    queryKey: [...vehicleKeys.detail(id), "history"],
     queryFn: () => vehicleApi.getVehicleHistory(id),
     retry: false,
   });
@@ -636,7 +637,7 @@ export default function VehicleDetailPage() {
         isError={photosQuery.isError}
         refetch={() =>
           queryClient.invalidateQueries({
-            queryKey: ["vehicle", vehicle.id, "photos"],
+            queryKey: [...vehicleKeys.detail(vehicle.id), "photos"],
           })
         }
       />
@@ -650,7 +651,7 @@ export default function VehicleDetailPage() {
         isError={documentsQuery.isError}
         refetch={() =>
           queryClient.invalidateQueries({
-            queryKey: ["vehicle", vehicle.id, "documents"],
+            queryKey: [...vehicleKeys.detail(vehicle.id), "documents"],
           })
         }
       />
@@ -667,7 +668,7 @@ export default function VehicleDetailPage() {
         isError={historyQuery.isError}
         refetch={() =>
           queryClient.invalidateQueries({
-            queryKey: ["vehicle", vehicle.id, "history"],
+            queryKey: [...vehicleKeys.detail(vehicle.id), "history"],
           })
         }
         vehicleId={vehicle.id}

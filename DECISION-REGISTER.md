@@ -112,6 +112,16 @@ Cuando el código contradiga una decisión aceptada, debe considerarse legacy, b
 | SEC-002 | Persistir el contexto activo en cookie httpOnly, no en localStorage          | `PENDING` |
 | SEC-003 | Exposición mínima de permisos en `/auth/me`                                  | `PENDING` |
 
+> **Ref. SEC-002 / D-021 (2026-10-29).** La persistencia del contexto activo se
+> resolvió **parcialmente** en el frontend con `sessionStorage` por-pestaña
+> (`autentia:active-context:v1`, payload mínimo `{type, id}`, validado contra
+> las membresías de la sesión). No contradice SEC-002, que sigue `PENDING`:
+> SEC-002 propone cookie httpOnly como persistencia definitiva; el storage
+> actual es solo UX y **no** es frontera de seguridad (el backend revalida
+> `X-Context-*` por request ⇒ 403). Sigue abierto el alcance amplio (cookie
+> httpOnly, persistencia entre reinicios, sync multi-pestaña). Ver
+> `DEUDA-TECNICA.md` § "2026-10-29 — D-021 (parcial)…".
+
 ---
 
 ## 5. Detalle de decisiones
@@ -369,7 +379,7 @@ Detectadas al verificar el código durante el análisis que originó este regist
 
 | ID        | El baseline afirma                                   | Realidad verificada                                                                  |
 | --------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| BASE-001  | Active Context "NO IMPLEMENTADO"                     | **Implementado**: `src/lib/active-context.ts`, `useActiveContext()`, selectores, headers `X-Context-Type`/`X-Context-Id`. Único gap: no persiste tras refresh |
+| BASE-001  | Active Context "NO IMPLEMENTADO"                     | **Implementado**: `src/lib/active-context.ts`, `useActiveContext()`, selectores, headers `X-Context-Type`/`X-Context-Id`. Persistencia UX en `sessionStorage` desde 2026-10-29 (D-021 parcial) |
 | BASE-002  | `usePermissions()` existe                            | **No existe**. Real: `src/lib/admin-access.ts` (`hasAdminAccess`, `can`, `hasRole`) + `useAuth()` |
 | BASE-003  | `src/lib/validations.ts` existe                      | **No existe**. Schemas distribuidos por dominio                                      |
 | BASE-004  | "No hay test runner, archivos, ni configuración"     | **Falso**. `vitest.config.ts`, scripts `test`/`test:watch`, **36 archivos de test** en carpetas `__test__/` (singular) |
@@ -389,7 +399,7 @@ Actualizado tras la revisión de arquitectura del Backend Tech Lead (2026-10-02)
 | ID       | Asunto                                                                              | Responsable | Bloquea                              |
 | -------- | ----------------------------------------------------------------------------------- | ----------- | ------------------------------------ |
 | SEC-001  | Validación server-side de `X-Context-Type` / `X-Context-Id`                          | Security    | FR-001 parcialmente: el frontend puede leer el contexto, pero la frontera de seguridad es backend |
-| SEC-002  | Persistencia del contexto activo entre refreshes                                     | Tech Lead   | Estabilidad de FR-001 tras refresh    |
+| SEC-002  | Persistencia del contexto activo entre refreshes                                     | Tech Lead   | Estabilidad de FR-001 tras refresh. **Parcial 2026-10-29**: sessionStorage UX; cookie httpOnly sigue pendiente |
 | SEC-003  | Exposición de permisos efectivos en `/auth/me`                                       | Backend     | FR-004 opción 1; hoy solo queda la 2  |
 | BE-001   | **10** permisos ausentes del seed (no 4): los 4 `workshop.*` más `admin.workshops.branches`, `admin.workshops.roles`, `admin.specialties.list/create/update/delete` | Backend | FR-005; y **7 endpoints del panel admin que hoy devuelven 403 en producción** |
 | BE-002   | Endpoints de sucursal: listar con inactivas, editar, cambiar estado, leer horarios  | Backend     | Gestión completa de sucursales        |

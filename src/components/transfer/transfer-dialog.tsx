@@ -21,6 +21,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { vehicleApi } from "@/lib/api";
+import { invalidateVehicleViews } from "@/lib/query-keys";
 import {
   createTransferErrorMessage,
   pendingTransferMessage,
@@ -337,7 +338,7 @@ function TransferDialogForm({
       // la lista de vehículos propios se resincronicen.
       if (transferErrorStatus(error) === 403) {
         queryClient.invalidateQueries({ queryKey: ["vehicle"] });
-        queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+        invalidateVehicleViews(queryClient);
       }
     }
   });
@@ -355,7 +356,7 @@ function TransferDialogForm({
           vehicle={qrVehicle}
           onMutationEnd={() => {
             queryClient.invalidateQueries({ queryKey: ["vehicle"] });
-            queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+            invalidateVehicleViews(queryClient);
             onSuccess?.();
           }}
         />
@@ -369,7 +370,7 @@ function TransferDialogForm({
             purpose="take"
             onMutationEnd={() => {
               queryClient.invalidateQueries({ queryKey: ["vehicle"] });
-              queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+              invalidateVehicleViews(queryClient);
               onSuccess?.();
             }}
           />

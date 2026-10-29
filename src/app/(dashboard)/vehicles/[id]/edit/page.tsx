@@ -19,6 +19,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { CorrectVinDialog } from "@/components/vehicle/correct-vin-dialog";
 import { vehicleApi } from "@/lib/api";
+import { invalidateVehicleViews, vehicleKeys } from "@/lib/query-keys";
 import { VIN_CORRECTION_ENABLED } from "@/lib/feature-flags";
 import {
   CONFLICT_MESSAGES,
@@ -65,7 +66,7 @@ export default function EditVehiclePage() {
   // retry:false — un 404/403 nunca se resuelve reejecutando la query.
   // ---------------------------------------------------------------------------
   const vehicleQuery = useQuery({
-    queryKey: ["vehicle", id],
+    queryKey: vehicleKeys.detail(id),
     queryFn: () => vehicleApi.getVehicle(id),
     retry: false,
   });
@@ -176,8 +177,8 @@ export default function EditVehiclePage() {
       );
 
       // RF-7: invalidar el listado y el detalle, y redirigir al detalle.
-      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      queryClient.invalidateQueries({ queryKey: ["vehicle", id] });
+      invalidateVehicleViews(queryClient);
+      queryClient.invalidateQueries({ queryKey: vehicleKeys.detail(id) });
       router.push(`/vehicles/${id}`);
     } catch (error) {
       const apiError = error as {
@@ -249,8 +250,8 @@ export default function EditVehiclePage() {
       setCorrectVinOpen(false);
       setCorrectVinError(null);
       setBanner("VIN corregido.");
-      queryClient.invalidateQueries({ queryKey: ["vehicle", id] });
-      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+      queryClient.invalidateQueries({ queryKey: vehicleKeys.detail(id) });
+      invalidateVehicleViews(queryClient);
     },
     onError: (error) => {
       const apiError = error as { status?: number; message?: string };

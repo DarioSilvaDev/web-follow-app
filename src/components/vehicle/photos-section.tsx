@@ -21,6 +21,7 @@ import {
 import { errorStatus } from "@/lib/api-error";
 import { SIGNED_URL_REFRESH_THRESHOLD_MS } from "@/lib/constants";
 import { vehicleApi } from "@/lib/api";
+import { vehicleKeys } from "@/lib/query-keys";
 import { VehicleMediaViewer, type MediaViewerItem } from "./vehicle-media-viewer";
 import type { VehiclePhoto } from "@/types/vehicle";
 
@@ -58,7 +59,9 @@ export function PhotosSection({
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["vehicle", vehicleId, "photos"] });
+    queryClient.invalidateQueries({
+      queryKey: [...vehicleKeys.detail(vehicleId), "photos"],
+    });
 
   const uploadPhoto = useMutation({
     mutationFn: (file: File) => vehicleApi.uploadPhoto(vehicleId, file),

@@ -28,6 +28,7 @@ import {
 } from "@/lib/constants";
 import { vehicleApi } from "@/lib/api";
 import { formatDate } from "@/lib/format-date";
+import { vehicleKeys } from "@/lib/query-keys";
 import { VehicleMediaViewer, type MediaViewerItem } from "./vehicle-media-viewer";
 import { DocumentPreviewDialog } from "./document-preview-dialog";
 import type { VehicleDocument, VehicleDocumentTypeOption } from "@/types/vehicle";
@@ -119,7 +120,7 @@ export function DocumentsSection({
 
   const invalidate = () =>
     queryClient.invalidateQueries({
-      queryKey: ["vehicle", vehicleId, "documents"],
+      queryKey: [...vehicleKeys.detail(vehicleId), "documents"],
     });
 
   const upload = useMutation({

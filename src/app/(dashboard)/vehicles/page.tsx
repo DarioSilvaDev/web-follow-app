@@ -5,6 +5,7 @@ import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Car, Loader2, RotateCw, Search, X } from "lucide-react";
 import { vehicleApi } from "@/lib/api";
+import { vehicleKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,10 +45,10 @@ export default function VehiclesPage() {
       ? debouncedInput.trim()
       : "";
 
-  // F-012 / RF-4: dynamic 4-element key (stable base for F-011 invalidation)
+  // F-012 / RF-4: clave estable y jerárquica (`vehicleKeys.all` la cubre)
   // + placeholderData keeps the previous list while q changes (no flash).
   const query = useQuery({
-    queryKey: ["vehicles", PAGE, LIMIT, effectiveQ],
+    queryKey: vehicleKeys.list({ page: PAGE, limit: LIMIT, q: effectiveQ }),
     queryFn: () =>
       effectiveQ
         ? vehicleApi.listVehicles({ page: PAGE, limit: LIMIT, q: effectiveQ })
