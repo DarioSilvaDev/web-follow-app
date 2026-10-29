@@ -270,7 +270,13 @@ export const api = ky.create({
         try {
           await refreshPromise;
         } catch {
-          // Refresh failed → throw original 401 so ky stops and caller gets error
+          // Refresh failed → sesión perdida. Se limpia el contexto activo
+          // (memoria + sessionStorage, D-021) para que el próximo login no
+          // herede un WORKSHOP/DEALERSHIP stale (ContextResolver → 403).
+          // `clearSession` del AuthProvider cubre el logout explícito; este es
+          // el otro camino en que la sesión deja de existir sin pasar por él.
+          clearActiveContext();
+          // Throw original 401 so ky stops and caller gets error.
           throw error;
         }
         // Refresh succeeded → continue with retry (new cookies in browser jar)
