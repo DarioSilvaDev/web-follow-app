@@ -1,20 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   Car,
   FileText,
-  Gauge,
   Loader2,
   Plus,
   RotateCw,
+  Users,
   Wrench,
 } from "lucide-react";
 import { vehicleApi } from "@/lib/api";
+import { vehicleKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { VehicleCard } from "@/components/vehicle/vehicle-card";
 import { useAuth } from "@/hooks/use-auth";
@@ -32,11 +32,10 @@ function isVehicleOwner(vehicle: Vehicle, userId: string | undefined): boolean {
 
 export default function DashboardPage() {
   const { status, user } = useAuth();
-  const router = useRouter();
   const activeContext = useActiveContext();
 
   const vehicleQuery = useQuery({
-    queryKey: ["vehicles", 1, 10],
+    queryKey: vehicleKeys.dashboard(),
     queryFn: () => vehicleApi.listVehicles({ page: 1, limit: 10 }),
   });
 
@@ -55,6 +54,7 @@ export default function DashboardPage() {
   const vehicles = vehicleQuery.data?.data ?? [];
   const hasVehicles = vehicles.length > 0;
   const isWorkshop = activeContext?.type === "WORKSHOP";
+  const isDealership = activeContext?.type === "DEALERSHIP";
 
   return (
     <div className="flex flex-col gap-6">
@@ -70,7 +70,10 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Quick actions */}
+      {/* Quick actions — varían según el contexto activo:
+          PERSONAL: Registrar vehículo.
+          WORKSHOP (F-023): Atenciones / Nueva atención / Verificaciones.
+          DEALERSHIP: vehículos de la concesionaria + miembros. */}
       <div className="flex flex-wrap gap-2">
         <Link href="/vehicles/new">
           <Button size="sm">
@@ -96,6 +99,22 @@ export default function DashboardPage() {
               <Button variant="outline" size="sm">
                 <FileText className="mr-1.5 h-3.5 w-3.5" />
                 Verificaciones
+              </Button>
+            </Link>
+          </>
+        )}
+        {isDealership && activeContext?.type === "DEALERSHIP" && (
+          <>
+            <Link href="/vehicles">
+              <Button variant="outline" size="sm">
+                <Car className="mr-1.5 h-3.5 w-3.5" />
+                Ver vehículos
+              </Button>
+            </Link>
+            <Link href={`/dealerships/${activeContext.dealershipId}?tab=members`}>
+              <Button variant="outline" size="sm">
+                <Users className="mr-1.5 h-3.5 w-3.5" />
+                Miembros
               </Button>
             </Link>
           </>

@@ -115,8 +115,8 @@ export default function OwnerServiceFormPage() {
           <CardContent>
             <p role="status" className="text-sm text-muted-foreground">
               Para registrar un servicio como propietario necesitás operar en
-              tu contexto personal. Volvé a "Personal" en el selector del
-              header y reintentá.
+              tu contexto personal. Limpiá el contexto activo con la ✕ del chip
+              del header e intentá nuevamente.
             </p>
           </CardContent>
         </Card>

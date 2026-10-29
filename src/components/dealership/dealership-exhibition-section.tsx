@@ -14,13 +14,16 @@
  * §22 / frontend §14) con el subset `{ id, licensePlate }` que el panel
  * necesita. Enforcement real: backend (membresía activa DEALERSHIP +
  * RB-10) — la UI solo habilita la acción.
+ *
+ * Empty state (0 vehículos): CTA "Registrar vehículo" vía prop
+ * `registerHref` (sin acoplar al router).
  */
 
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Banknote, ImageIcon, RotateCcw, Store } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Banknote, ImageIcon, Plus, RotateCcw, Store } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Dialog,
@@ -29,11 +32,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { dealershipApi } from "@/lib/api";
+import { invalidateVehicleViews, vehicleKeys } from "@/lib/query-keys";
 import { QrTransferPanel } from "@/components/transfer/qr-transfer-panel";
 import type { DealershipExhibitionVehicle } from "@/types/dealership";
 
 interface DealershipExhibitionSectionProps {
   dealershipId: string;
+  /**
+   * href del CTA "Registrar vehículo" del empty state (0 vehículos).
+   * Se pasa por prop para no acoplar el componente al router: el caller
+   * decide el destino (/vehicles/new — el contexto DEALERSHIP lo garantiza
+   * el hook de ruta).
+   */
+  registerHref: string;
 }
 
 interface ExhibitionAction {
@@ -71,12 +82,13 @@ function primaryPhotoURL(vehicle: DealershipExhibitionVehicle): string | null {
 
 export function DealershipExhibitionSection({
   dealershipId,
+  registerHref,
 }: DealershipExhibitionSectionProps) {
   const queryClient = useQueryClient();
   const [action, setAction] = useState<ExhibitionAction | null>(null);
 
   const vehiclesQuery = useQuery({
-    queryKey: ["dealership-vehicles", dealershipId],
+    queryKey: vehicleKeys.dealershipExhibition(dealershipId),
     queryFn: () => dealershipApi.listVehicles(dealershipId),
   });
 
@@ -96,8 +108,17 @@ export function DealershipExhibitionSection({
       ) : vehicles.length === 0 ? (
         <EmptyState
           icon={Store}
-          title="Sin vehículos en exhibición"
-          description="Cuando un vendedor escanee el QR de toma (consignación), el vehículo aparece acá en exhibición hasta su venta o devolución."
+          title="No hay vehículos en exhibición todavía"
+          description="Registrá el primer vehículo de la concesionaria para empezar a construir su historia."
+          action={
+            <Link
+              href={registerHref}
+              className={buttonVariants({ size: "sm", className: "gap-1.5" })}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Registrar vehículo
+            </Link>
+          }
         />
       ) : (
         <ul className="flex flex-col divide-y rounded-lg border">
@@ -190,9 +211,11 @@ export function DealershipExhibitionSection({
               }}
               purpose={action.purpose}
               onMutationEnd={() => {
-                queryClient.invalidateQueries({
-                  queryKey: ["dealership-vehicles", dealershipId],
-                });
+                // Vender/Devolver cambia la exhibición Y el conjunto que
+                // devuelve `GET /vehicles` en contexto DEALERSHIP (D-TL-19).
+                // `invalidateVehicleViews` cubre ambas superficies (y las
+                // demás vistas del conjunto) con una sola llamada.
+                invalidateVehicleViews(queryClient);
                 setAction(null);
               }}
             />

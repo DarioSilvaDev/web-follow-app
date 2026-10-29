@@ -144,7 +144,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     renderPage();
 
     expect(
-      await screen.findByText(/volvé a "Personal" en el selector del header/i),
+      await screen.findByText(/limpiá el contexto activo con la ✕ del chip/i),
     ).toBeInTheDocument();
     expect(mockSearchWorkshops).not.toHaveBeenCalled();
     expect(mockCreateOwner).not.toHaveBeenCalled();

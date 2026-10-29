@@ -1,36 +1,40 @@
 "use client";
 
+/**
+ * Layout del dashboard — header con nav + chip de contexto activo.
+ *
+ * Navegación (decisión de UX, reemplaza al ContextSelector del header):
+ *   Inicio · Transferencias · Concesionarias · Talleres · Administración ·
+ *   Mi perfil
+ * - "Concesionarias" solo si `dealershipMemberships.length > 0`;
+ * - "Talleres" solo si `workshopMemberships.length > 0`;
+ * - "Administración" solo si `hasAdminAccess(user)` (workspace admin).
+ * - NO hay items de Atenciones en el nav (F-023: son quick actions del
+ *   dashboard, no del header).
+ *
+ * El contexto activo (WORKSHOP/DEALERSHIP) se deriva de la ruta vía
+ * `useRouteDerivedContext` (detalles `/dealerships/<uuid>` y
+ * `/workshops/<uuid>`); el chip `ContextChip` lo muestra y permite volver
+ * a PERSONAL con la ✕. "Inicio" (/dashboard) NO limpia el contexto.
+ */
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ContextSelector } from "@/components/layout/context-selector";
-import { useActiveContext } from "@/hooks/use-active-context";
+import { ContextChip } from "@/components/layout/context-chip";
 import { useAuth } from "@/hooks/use-auth";
+import { useRouteDerivedContext } from "@/hooks/use-route-derived-context";
 import { hasAdminAccess } from "@/lib/admin-access";
 import { authApi } from "@/lib/api";
 import { cn } from "cn";
 
-const NAV_ITEMS_BASE = [
-  { href: "/dashboard", label: "Inicio" },
-  // Fase 1 / D-078: panel de transferencias (base — owner en contexto PERSONAL).
-  { href: "/transferencias", label: "Transferencias" },
-  // Milestone consignación (D-105 / spec §8): gestión de concesionarias.
-  { href: "/dealerships", label: "Concesionarias" },
-] as const;
-
-const NAV_ITEMS_WORKSHOP = [
-  // F-023 RF-6: orden Atenciones → Nueva atención → Verificaciones.
-  { href: "/atenciones", label: "Atenciones" },
-  { href: "/atenciones/nueva", label: "Nueva atención" },
-  { href: "/atenciones/verificaciones", label: "Verificaciones" },
-] as const;
-
-// Hrefs que se activan SOLO en match exacto del pathname (RF-6): evita que
-// "Atenciones" (/atenciones) se marque activa dentro de /atenciones/nueva ni
-// /atenciones/verificaciones. Mismo criterio que /dashboard.
-const EXACT_MATCH_HREFS = new Set(["/dashboard", "/atenciones"]);
+// Hrefs que se activan SOLO en match exacto del pathname: evita que
+// "Inicio" (/dashboard) se marque activa en subrutas hipotéticas y que
+// "/profile" capture prefijos futuros. El resto usa startsWith (así
+// /dealerships/<id> marca "Concesionarias" y /workshops/<id> "Talleres").
+const EXACT_MATCH_HREFS = new Set(["/dashboard", "/profile"]);
 
 export default function DashboardLayout({
   children,
@@ -40,8 +44,10 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { status, user, clearSession } = useAuth();
-  const activeContext = useActiveContext();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Contexto activo derivado de la ruta (ruta explícita > contexto vigente).
+  useRouteDerivedContext();
 
   // Session lost (expired cookies, refresh failure) → redirect to login
   // preserving the intended destination (RF-3).
@@ -76,14 +82,10 @@ export default function DashboardLayout({
         .toUpperCase()
     : null;
 
-  const isWorkshop = activeContext?.type === "WORKSHOP";
-
   // PM §29 (D-105): "Concesionarias" solo se renderiza cuando el usuario
   // tiene `dealershipMemberships` (datos de sesión — no permisos genéricos).
-  // NAV_ITEMS_BASE se mantiene como fuente canónica; el acceso del header al
-  // ContextSelector ya es condicional: sin membresías no renderiza nada
-  // (§8 RB-10).
   const hasDealerships = (user?.dealershipMemberships?.length ?? 0) > 0;
+  const hasWorkshops = (user?.workshopMemberships?.length ?? 0) > 0;
 
   // Onboarding administrado de concesionaria: "Administración" (workspace
   // admin) solo para roles/permisos de plataforma (UX — el backend enforcea).
@@ -94,13 +96,24 @@ export default function DashboardLayout({
     return pathname.startsWith(href);
   };
 
+  // "page" solo en match exacto del pathname; "true" en match por prefijo
+  // (así /dealerships/<id> no marca aria-current="page" en Concesionarias).
+  const ariaCurrent = (href: string) => {
+    if (pathname === href) return "page" as const;
+    return isActive(href) ? ("true" as const) : undefined;
+  };
+
   const navLinks = [
-    ...NAV_ITEMS_BASE,
-    ...(isWorkshop ? NAV_ITEMS_WORKSHOP : []),
-    ...(isAdmin ? [{ href: "/admin", label: "Administración" }] : []),
-  ].filter(
-    (item) => item.href !== "/dealerships" || hasDealerships,
-  );
+    { href: "/dashboard", label: "Inicio" },
+    // Fase 1 / D-078: panel de transferencias (base — owner en contexto PERSONAL).
+    { href: "/transferencias", label: "Transferencias" },
+    // Milestone consignación (D-105 / spec §8): gestión de concesionarias.
+    { href: "/dealerships", label: "Concesionarias", visible: hasDealerships },
+    // Listado de talleres del usuario (espejo de Concesionarias).
+    { href: "/workshops", label: "Talleres", visible: hasWorkshops },
+    { href: "/admin", label: "Administración", visible: isAdmin },
+    { href: "/profile", label: "Mi perfil" },
+  ].filter((item) => item.visible !== false);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -116,11 +129,11 @@ export default function DashboardLayout({
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
-            <ContextSelector />
             {navLinks.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={ariaCurrent(item.href)}
                 className={cn(
                   "px-3 py-1.5 text-sm rounded-md transition-colors",
                   isActive(item.href)
@@ -131,43 +144,35 @@ export default function DashboardLayout({
                 {item.label}
               </Link>
             ))}
-            <Link
-              href="/profile"
-              className={cn(
-                "px-3 py-1.5 text-sm rounded-md transition-colors",
-                pathname === "/profile"
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
-              )}
-            >
-              Mi perfil
-            </Link>
 
-            {/* User avatar + logout */}
-            {user && (
-              <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
-                <div
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-medium"
-                  title={`${user.firstName} ${user.lastName}`}
-                >
-                  {initials || <User className="h-3.5 w-3.5" />}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleLogout}
-                  title="Cerrar sesión"
-                  className="h-7 w-7"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
+              <ContextChip />
+              {/* User avatar + logout */}
+              {user && (
+                <>
+                  <div
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-medium"
+                    title={`${user.firstName} ${user.lastName}`}
+                  >
+                    {initials || <User className="h-3.5 w-3.5" />}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleLogout}
+                    title="Cerrar sesión"
+                    className="h-7 w-7"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+            </div>
           </nav>
 
           {/* Mobile hamburger */}
           <div className="flex items-center gap-2 md:hidden">
-            <ContextSelector />
+            <ContextChip />
             {user && (
               <div
                 className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-medium"
@@ -200,6 +205,7 @@ export default function DashboardLayout({
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={ariaCurrent(item.href)}
                   className={cn(
                     "px-3 py-2 text-sm rounded-md transition-colors",
                     isActive(item.href)
@@ -210,17 +216,6 @@ export default function DashboardLayout({
                   {item.label}
                 </Link>
               ))}
-              <Link
-                href="/profile"
-                className={cn(
-                  "px-3 py-2 text-sm rounded-md transition-colors",
-                  pathname === "/profile"
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                )}
-              >
-                Mi perfil
-              </Link>
               <div className="border-t border-border mt-2 pt-2">
                 <Button
                   variant="ghost"

@@ -32,7 +32,7 @@ function renderSection() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <DealershipExhibitionSection dealershipId="d1" />
+      <DealershipExhibitionSection dealershipId="d1" registerHref="/vehicles/new" />
     </QueryClientProvider>,
   );
 }
@@ -81,7 +81,7 @@ describe("DealershipExhibitionSection", () => {
     renderSection();
 
     expect(
-      await screen.findByText(/sin vehículos en exhibición/i),
+      await screen.findByText(/no hay vehículos en exhibición todavía/i),
     ).toBeInTheDocument();
   });
 });

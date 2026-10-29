@@ -5,8 +5,8 @@
  * NAV_ITEMS_BASE "Concesionarias", RB-10). Fuente: `GET /dealerships/mine`
  * (`dealershipApi.listMine`) — concesionarias donde el usuario es miembro
  * activo. La pertenencia/rol del usuario por concesionaria se resuelve desde
- * la sesión (`SessionUser.dealershipMemberships`, igual que el selector del
- * header — §10.4 Auth State), no desde la entidad `Dealership`.
+ * la sesión (`SessionUser.dealershipMemberships`, igual que el chip de
+ * contexto — §10.4 Auth State), no desde la entidad `Dealership`.
  *
  * Alta rápida (D-103): "Nueva concesionaria" → `/dealerships/nueva`
  * (CreateDealershipForm — incluye "yo soy el dueño", D-104, crea el member

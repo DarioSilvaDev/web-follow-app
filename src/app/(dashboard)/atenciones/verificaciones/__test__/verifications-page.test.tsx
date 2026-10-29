@@ -21,6 +21,11 @@ import { clearWorkshop, selectWorkshop } from "@/lib/active-context";
 
 const mockGetVerifications = vi.fn();
 const mockVerify = vi.fn();
+const mockReplace = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: mockReplace }),
+}));
 
 vi.mock("@/lib/api", () => ({
   careEpisodeApi: {
@@ -114,7 +119,7 @@ describe("Verificaciones page (iteración 2-2)", () => {
 
     expect(
       await screen.findByText(
-        /seleccioná un taller en el selector del header/i,
+        /entrá a la sección talleres del menú/i,
       ),
     ).toBeInTheDocument();
     expect(mockGetVerifications).not.toHaveBeenCalled();

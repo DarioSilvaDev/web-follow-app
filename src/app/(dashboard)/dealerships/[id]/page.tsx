@@ -8,7 +8,10 @@
  *
  * Estructura:
  * - Cabecera de perfil: nombre, razón social / CUIT, estado (Activa/Inactiva
- *   por `isActive`, D-106) y acciones "Exhibición" · "Miembros".
+ *   por `isActive`, D-106), CTA "Registrar vehículo" (→ /vehicles/new; el
+ *   contexto DEALERSHIP lo garantiza el hook de ruta) y acciones "Exhibición"
+ *   · "Miembros". La tab inicial acepta `?tab=members` (deep-link desde el
+ *   dashboard en contexto DEALERSHIP).
  * - `DealershipExhibitionSection` (D-107, spec §8): vehículos consignados en
  *   exhibición — Vender (QR sale, RB-D) / Devolver (QR return) vía
  *   QrTransferPanel (ÚNICA frontera QR, AGENTS.md §22 / frontend §14).
@@ -18,10 +21,11 @@
  * La UI solo oculta visibilidad; nunca es security boundary (AGENTS.md §20/§22).
  */
 
+import { Suspense } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Store } from "lucide-react";
+import { ArrowLeft, Plus, Store } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -134,24 +138,55 @@ export default function DealershipDetailPage() {
                     </div>
                   </div>
                 </div>
+                {/* Alta de vehículo a nombre de la concesionaria: el contexto
+                    DEALERSHIP lo garantiza useRouteDerivedContext al estar en
+                    /dealerships/[id] (el form exige kilometraje inicial, D-07). */}
+                <Link
+                  href="/vehicles/new"
+                  className={buttonVariants({ size: "sm", className: "gap-1.5" })}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Registrar vehículo
+                </Link>
               </div>
             </CardHeader>
           </Card>
 
-          <Tabs defaultValue="exhibition">
-            <TabsList>
-              <TabsTrigger value="exhibition">Exhibición</TabsTrigger>
-              <TabsTrigger value="members">Miembros</TabsTrigger>
-            </TabsList>
-            <TabsContent value="exhibition" className="pt-3">
-              <DealershipExhibitionSection dealershipId={dealershipId} />
-            </TabsContent>
-            <TabsContent value="members" className="pt-3">
-              <DealershipMembersSection dealershipId={dealershipId} />
-            </TabsContent>
-          </Tabs>
+          <Suspense fallback={null}>
+            <DealershipDetailTabs dealershipId={dealershipId} />
+          </Suspense>
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Tabs Exhibición / Miembros. Separa el componente para leer `?tab=`
+ * con `useSearchParams` dentro de un Suspense boundary (patrón del repo —
+ * ver (auth)/login). `?tab=members` → tab Miembros (deep-link del
+ * dashboard); cualquier otro valor defaultea a Exhibición.
+ */
+function DealershipDetailTabs({ dealershipId }: { dealershipId: string }) {
+  const searchParams = useSearchParams();
+  const initialTab =
+    searchParams.get("tab") === "members" ? "members" : "exhibition";
+
+  return (
+    <Tabs defaultValue={initialTab}>
+      <TabsList>
+        <TabsTrigger value="exhibition">Exhibición</TabsTrigger>
+        <TabsTrigger value="members">Miembros</TabsTrigger>
+      </TabsList>
+      <TabsContent value="exhibition" className="pt-3">
+        <DealershipExhibitionSection
+          dealershipId={dealershipId}
+          registerHref="/vehicles/new"
+        />
+      </TabsContent>
+      <TabsContent value="members" className="pt-3">
+        <DealershipMembersSection dealershipId={dealershipId} />
+      </TabsContent>
+    </Tabs>
   );
 }

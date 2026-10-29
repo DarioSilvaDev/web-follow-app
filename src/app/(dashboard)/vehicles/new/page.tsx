@@ -19,6 +19,8 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useActiveContext } from "@/hooks/use-active-context";
+import { getActiveContext } from "@/lib/active-context";
+import { invalidateVehicleViews } from "@/lib/query-keys";
 import { vehicleApi } from "@/lib/api";
 import {
   CONFLICT_MESSAGES,
@@ -99,15 +101,32 @@ export default function NewVehiclePage() {
         toVehicleInput(data, selectedVersionId, isDealership),
       );
 
+      // Contexto activo al momento del éxito (se lee ANTES del refresh de
+      // sesión porque `refreshSession` no toca el store de contexto).
+      const ctx = getActiveContext();
+
       // RF-7: force the list to refetch and refresh the session so the
-      // dashboard reflects isVehicleOwner.
-      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+      // dashboard reflects isVehicleOwner. Una sola invalidación cubre TODAS
+      // las vistas del conjunto (lista, dashboard, transferencias y la tab
+      // Exhibición de la concesionaria), que comparten el namespace
+      // `["vehicles"]` (`src/lib/query-keys.ts`, D-TL-19). Antes había que
+      // invalidar a mano `["dealership-vehicles", id]` y olvidarla dejaba la
+      // exhibición stale.
+      invalidateVehicleViews(queryClient);
+
       try {
         await refreshSession();
       } catch {
         // Best-effort: stale session data is not fatal for the redirect
       }
-      router.push("/vehicles");
+      // Redirect contextual: con DEALERSHIP activo en el momento del éxito,
+      // volver a la concesionaria (el vehículo quedó a su nombre, D-07);
+      // en PERSONAL (o sin contexto) → /vehicles (comportamiento previo).
+      router.push(
+        ctx?.type === "DEALERSHIP"
+          ? `/dealerships/${ctx.dealershipId}`
+          : "/vehicles",
+      );
     } catch (error) {
       const apiError = error as {
         status?: number;

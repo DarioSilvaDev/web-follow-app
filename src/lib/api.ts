@@ -64,6 +64,7 @@ import type {
   UpdateWorkshopInput,
   WorkshopBranch,
   WorkshopDetail,
+  WorkshopListResponse,
   WorkshopSearchResult,
 } from "@/types/workshop";
 import type {
@@ -448,8 +449,12 @@ export const usersApi = {
 // ---------------------------------------------------------------------------
 // Vehicle API methods
 //
-// D-035 (MVP): vehicle calls run in PERSONAL context — no X-Context-Type
-// header is sent; the backend defaults to PERSONAL.
+// Contexto: los headers `X-Context-Type`/`X-Context-Id` SÍ se inyectan en
+// las llamadas a vehicles cuando hay contexto activo (`injectActiveContextHeaders`
+// no excluye `vehicles/*`; solo excluye auth/wizard/admin). En PERSONAL no
+// se envía ningún header y el backend defaultea a PERSONAL (D-035). Con
+// DEALERSHIP activo el alta de 0 km queda a nombre de la concesionaria
+// (D-07).
 // ---------------------------------------------------------------------------
 
 export interface VehicleApiError {
@@ -1004,7 +1009,8 @@ export const careEpisodeApi = {
 
 // ---------------------------------------------------------------------------
 // Workshop API methods (F-020 — branches del taller para el check-in;
-// DECISION-REGISTER PROD-001 — auto-servicio "Mi taller")
+// DECISION-REGISTER PROD-001 — auto-servicio "Mi taller"; listado propio
+// espejo de /dealerships/mine para /workshops)
 //
 // GET /workshops/:id (backend existente) exige membresía activa y devuelve las
 // branches activas (sede primero). Sin ContextGuard: tolera los headers de
@@ -1022,6 +1028,18 @@ export const careEpisodeApi = {
 // ---------------------------------------------------------------------------
 
 export const workshopApi = {
+  /**
+   * GET /workshops → talleres del usuario con membresía activa (envelope
+   * `{ data, meta }`, espejo de `GET /dealerships/mine`). El backend responde
+   * 403 sin membresía activa (super_admin ve todos) — la UI refleja el estado,
+   * nunca es frontera de seguridad.
+   */
+  listMine: () =>
+    api
+      .get("workshops")
+      .json<WorkshopListResponse>()
+      .catch(toApiError),
+
   /** GET /workshops/:id → WorkshopResponseDto (branches activas, sede primero). */
   getWorkshop: (id: string) =>
     api

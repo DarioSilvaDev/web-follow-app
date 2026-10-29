@@ -20,6 +20,29 @@ import { clearWorkshop, selectWorkshop } from "@/lib/active-context";
 const mockLookup = vi.fn();
 const mockCreate = vi.fn();
 const mockGetWorkshop = vi.fn();
+const mockReplace = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: mockReplace }),
+}));
+
+// Membresía presente para que el guard de membresía NO redirija y el copy
+// de guía sea el de "con membresías" (comportamiento pre-existente).
+vi.mock("@/hooks/use-auth", () => ({
+  useAuth: () => ({
+    status: "authenticated",
+    user: {
+      id: "u1",
+      workshopMemberships: [
+        {
+          workshopId: "w1",
+          workshop: { id: "w1", name: "Taller Mecánico Central" },
+          role: "Owner",
+        },
+      ],
+    },
+  }),
+}));
 
 vi.mock("@/lib/api", () => ({
   careEpisodeApi: {
@@ -155,7 +178,7 @@ describe("Nueva atención page (F-020)", () => {
     renderPage();
 
     expect(
-      await screen.findByText(/seleccioná un taller en el selector del header/i),
+      await screen.findByText(/entrá a la sección talleres del menú/i),
     ).toBeInTheDocument();
     expect(mockLookup).not.toHaveBeenCalled();
     expect(mockGetWorkshop).not.toHaveBeenCalled();

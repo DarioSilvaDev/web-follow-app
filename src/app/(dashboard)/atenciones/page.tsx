@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, RotateCw, Wrench } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AdminTablePagination } from "@/components/admin/admin-table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -93,11 +94,25 @@ export default function AtencionesPage() {
   const activeContext = useActiveContext();
   const workshopId =
     activeContext?.type === "WORKSHOP" ? activeContext.workshopId : null;
-  const { user } = useAuth();
+  const { status, user } = useAuth();
+  const router = useRouter();
 
   const workshopName = user?.workshopMemberships.find(
     (membership) => membership.workshopId === workshopId,
   )?.workshop.name;
+
+  const hasWorkshopMembership =
+    (user?.workshopMemberships?.length ?? 0) > 0;
+
+  // Guard de membresía (PO): sin taller no hay journey de atenciones →
+  // redirect a /dashboard. UX únicamente — el backend ya enforcea (403
+  // WorkshopOnly). Durante `loading` NO se redirige (evita un falso
+  // redirect en el bootstrap de la sesión).
+  useEffect(() => {
+    if (status !== "loading" && !hasWorkshopMembership) {
+      router.replace("/dashboard");
+    }
+  }, [status, hasWorkshopMembership, router]);
 
   const [page, setPage] = useState(1);
 
@@ -122,8 +137,10 @@ export default function AtencionesPage() {
           <CardContent>
             <p role="status" className="text-sm text-muted-foreground">
               Para ver las atenciones de tu taller necesitás operar en el
-              contexto de un taller. Seleccioná un taller en el selector del
-              header y volvé a intentar.
+              contexto de un taller.{" "}
+              {hasWorkshopMembership
+                ? "Entrá a la sección Talleres del menú y elegí tu taller para activar su contexto."
+                : "Todavía no formás parte de un taller. Pedí una invitación por email para sumarte al equipo de uno."}
             </p>
           </CardContent>
         </Card>

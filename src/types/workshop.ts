@@ -43,6 +43,38 @@ export interface WorkshopDetail {
 }
 
 /**
+ * `GET /workshops` (listado propio, espejo de `GET /dealerships/mine`) →
+ * envelope `{ data, meta }`. El handler devuelve la entidad Prisma con
+ * `_count` (members/branches) y `branches` acotado a la sede (headquarters).
+ * Tipo acotado a lo que lee el listado (`/workshops`); no reutiliza
+ * `WorkshopDetail` para no exponer campos que este consumo no necesita.
+ */
+export interface WorkshopSummary {
+  id: string;
+  name: string;
+  legalName: string | null;
+  taxId: string | null;
+  logoUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { members: number; branches: number };
+  branches?: WorkshopBranch[];
+}
+
+export interface WorkshopListMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface WorkshopListResponse {
+  data: WorkshopSummary[];
+  meta: WorkshopListMeta;
+}
+
+/**
  * Iteración 2-2 (RF-3): `GET /api/workshops/search?q=` → resultado de la
  * búsqueda pública acotada de talleres (autenticado, SIN membresía).
  * Devuelve SOLO `id`/`name`/`logoUrl?`/`city` — sin taxId/email/branches

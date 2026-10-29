@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,6 +20,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AttachmentsUploader } from "@/components/care-episode/attachments-uploader";
 import { useActiveContext } from "@/hooks/use-active-context";
+import { useAuth } from "@/hooks/use-auth";
 import { careEpisodeApi, workshopApi } from "@/lib/api";
 import type { CareEpisodeLookupVehicle } from "@/types/care-episode";
 
@@ -83,6 +85,21 @@ export default function NewCareEpisodePage() {
   const activeContext = useActiveContext();
   const workshopId =
     activeContext?.type === "WORKSHOP" ? activeContext.workshopId : null;
+  const { status, user } = useAuth();
+  const router = useRouter();
+
+  const hasWorkshopMembership =
+    (user?.workshopMemberships?.length ?? 0) > 0;
+
+  // Guard de membresía (PO): sin taller no hay journey de atenciones →
+  // redirect a /dashboard. UX únicamente — el backend ya enforcea (403
+  // WorkshopOnly). Durante `loading` NO se redirige (evita un falso
+  // redirect en el bootstrap de la sesión).
+  useEffect(() => {
+    if (status !== "loading" && !hasWorkshopMembership) {
+      router.replace("/dashboard");
+    }
+  }, [status, hasWorkshopMembership, router]);
 
   // ── Búsqueda por placa ────────────────────────────────────────────────────
   const [plateInput, setPlateInput] = useState("");
@@ -227,8 +244,10 @@ export default function NewCareEpisodePage() {
           <CardContent>
             <p role="status" className="text-sm text-muted-foreground">
               Para registrar una atención necesitás operar en el contexto de un
-              taller. Seleccioná un taller en el selector del header y volvé a
-              intentar.
+              taller.{" "}
+              {hasWorkshopMembership
+                ? "Entrá a la sección Talleres del menú y elegí tu taller para activar su contexto."
+                : "Todavía no formás parte de un taller. Pedí una invitación por email para sumarte al equipo de uno."}
             </p>
           </CardContent>
         </Card>
