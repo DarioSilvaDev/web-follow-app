@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Car, Loader2, RotateCw, Search, X } from "lucide-react";
+import { Car, RotateCw, Search, X } from "lucide-react";
 import { vehicleApi } from "@/lib/api";
 import { vehicleKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
@@ -87,27 +87,51 @@ export default function VehiclesPage() {
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Buscar por placa…"
             maxLength={20}
-            className="pl-8 pr-8"
+            className="pl-8 pr-10"
           />
           {searchInput && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2"
+              // 36px visibles + área clickeable expandida a ~44px (WCAG 2.5.5).
+              className="relative h-9 w-9 after:absolute after:-inset-1 after:content-['']"
               aria-label="Limpiar búsqueda"
               onClick={() => setSearchInput("")}
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </Button>
           )}
         </div>
       </div>
 
       {query.isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
+        // Skeleton con la forma de cada VehicleCard (no un spinner suelto).
+        <ul
+          className="flex flex-col gap-4"
+          role="status"
+          aria-label="Cargando vehículos"
+        >
+          {[0, 1, 2].map((row) => (
+            <li
+              key={row}
+              aria-hidden="true"
+              className="rounded-xl border bg-card p-6 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 animate-pulse rounded-lg bg-muted" />
+                  <div className="space-y-2">
+                    <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+                    <div className="h-3 w-32 animate-pulse rounded bg-muted" />
+                  </div>
+                </div>
+                <div className="h-6 w-20 animate-pulse rounded-full bg-muted" />
+              </div>
+              <div className="mt-4 h-3 w-40 animate-pulse rounded bg-muted" />
+            </li>
+          ))}
+        </ul>
       ) : query.isError ? (
         <EmptyState
           icon={RotateCw}

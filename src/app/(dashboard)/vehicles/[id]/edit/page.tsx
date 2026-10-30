@@ -15,9 +15,8 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { CorrectVinDialog } from "@/components/vehicle/correct-vin-dialog";
+import { VehicleFormFields } from "@/components/vehicle/vehicle-form-fields";
 import { vehicleApi } from "@/lib/api";
 import { invalidateVehicleViews, vehicleKeys } from "@/lib/query-keys";
 import { VIN_CORRECTION_ENABLED } from "@/lib/feature-flags";
@@ -353,8 +352,7 @@ export default function EditVehiclePage() {
           Editar vehículo
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Corregí los datos del vehículo. Solo el propietario puede editar
-          (D-039).
+          Corregí los datos del vehículo. Solo el propietario puede editar.
         </p>
       </div>
 
@@ -370,187 +368,59 @@ export default function EditVehiclePage() {
       <Card>
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <CardContent className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="licensePlate">Placa</Label>
-              <Input
-                id="licensePlate"
-                placeholder="Ej. ABC123"
-                maxLength={10}
-                autoComplete="off"
-                aria-invalid={!!errors.licensePlate}
-                {...register("licensePlate")}
-              />
-              {errors.licensePlate && (
-                <p className="text-sm text-destructive" role="alert">
-                  {errors.licensePlate.message}
-                </p>
-              )}
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="vin">VIN</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="vin"
-                  value={vehicleQuery.data?.vin ?? ""}
-                  readOnly
-                  placeholder="Sin VIN registrado"
-                  className="flex-1"
-                />
-                {canCorrectVin && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setCorrectVinOpen(true)}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    Corregir VIN
-                  </Button>
-                )}
-              </div>
-              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                {canCorrectVin
-                  ? "El VIN no se edita directamente: usá “Corregir VIN” (queda auditado)."
-                  : "El VIN se asigna en el alta y no se edita desde este formulario."}
-              </p>
-            </div>
-
-            <div className="grid gap-3">
-              <div>
-                <p className="text-sm font-medium">
-                  Catálogo vehicular (opcional)
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Si no se modifica, se mantiene la versión del catálogo
-                  actual. Si se vacía, la versión existente no se borra (RF-2).
-                </p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-3">
+            <VehicleFormFields
+              register={register}
+              errors={errors}
+              submitError={submitError}
+              vinSlot={
                 <div className="grid gap-2">
-                  <Label htmlFor="brand">Marca</Label>
-                  <Select
-                    id="brand"
-                    value={selectedBrandId}
-                    onChange={(event) => handleBrandChange(event.target.value)}
-                  >
-                    <option value="">Seleccionar</option>
-                    {brandsQuery.data?.map((brand) => (
-                      <option key={brand.id} value={brand.id}>
-                        {brand.name}
-                      </option>
-                    ))}
-                  </Select>
-                  {brandsQuery.isError && (
-                    <p className="text-xs text-muted-foreground" role="alert">
-                      No se pudo cargar el catálogo. Podés guardar sin
-                      marca/modelo/versión.
-                    </p>
-                  )}
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="model">Modelo</Label>
-                  <Select
-                    id="model"
-                    value={selectedModelId}
-                    onChange={(event) => handleModelChange(event.target.value)}
-                    disabled={!selectedBrandId || modelsQuery.isLoading}
-                  >
-                    <option value="">
-                      {modelsQuery.isLoading ? "Cargando..." : "Seleccionar"}
-                    </option>
-                    {modelsQuery.data?.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="version">Versión</Label>
-                  <Select
-                    id="version"
-                    value={selectedVersionId}
-                    onChange={(event) => setSelectedVersionId(event.target.value)}
-                    disabled={!selectedModelId || versionsQuery.isLoading}
-                  >
-                    <option value="">
-                      {versionsQuery.isLoading ? "Cargando..." : "Seleccionar"}
-                    </option>
-                    {versionsQuery.data?.map((version) => (
-                      <option key={version.id} value={version.id}>
-                        {version.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              {/* <div className="grid gap-2">
-                <Label htmlFor="manufactureYear">
-                  Año de fabricación (opcional)
-                </Label>
-                <Input
-                  id="manufactureYear"
-                  inputMode="numeric"
-                  placeholder="Ej. 2020"
-                  maxLength={4}
-                  autoComplete="off"
-                  aria-invalid={!!errors.manufactureYear}
-                  {...register("manufactureYear")}
-                />
-                {errors.manufactureYear && (
-                  <p className="text-sm text-destructive" role="alert">
-                    {errors.manufactureYear.message}
+                  <Label htmlFor="vin">VIN</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="vin"
+                      value={vehicleQuery.data?.vin ?? ""}
+                      readOnly
+                      placeholder="Sin VIN registrado"
+                      className="flex-1"
+                    />
+                    {canCorrectVin && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setCorrectVinOpen(true)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                        Corregir VIN
+                      </Button>
+                    )}
+                  </div>
+                  <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    {canCorrectVin
+                      ? "El VIN no se edita directamente: usá “Corregir VIN” (queda auditado)."
+                      : "El VIN se asigna en el alta y no se edita desde este formulario."}
                   </p>
-                )}
-              </div> */}
-              <div className="grid gap-2">
-                <Label htmlFor="modelYear">Año del modelo (opcional)</Label>
-                <Input
-                  id="modelYear"
-                  inputMode="numeric"
-                  placeholder="Ej. 2021"
-                  maxLength={4}
-                  autoComplete="off"
-                  aria-invalid={!!errors.modelYear}
-                  {...register("modelYear")}
-                />
-                {errors.modelYear && (
-                  <p className="text-sm text-destructive" role="alert">
-                    {errors.modelYear.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="color">Color (opcional)</Label>
-              <Input
-                id="color"
-                placeholder="Ej. Rojo"
-                autoComplete="off"
-                {...register("color")}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="notes">Notas (opcional)</Label>
-              <Textarea
-                id="notes"
-                placeholder="Observaciones adicionales..."
-                rows={3}
-                {...register("notes")}
-              />
-            </div>
-
-            {submitError && (
-              <p className="text-sm text-destructive" role="alert">
-                {submitError}
-              </p>
-            )}
+                </div>
+              }
+              catalog={{
+                selectedBrandId,
+                selectedModelId,
+                selectedVersionId,
+                brands: brandsQuery.data,
+                models: modelsQuery.data,
+                versions: versionsQuery.data,
+                modelsLoading: modelsQuery.isLoading,
+                versionsLoading: versionsQuery.isLoading,
+                brandsError: brandsQuery.isError,
+                onBrandChange: handleBrandChange,
+                onModelChange: handleModelChange,
+                onVersionChange: (value) => setSelectedVersionId(value),
+                description:
+                  "Si no se modifica, se mantiene la versión del catálogo actual. Si se vacía, la versión existente no se borra.",
+                errorHint:
+                  "No se pudo cargar el catálogo. Podés guardar sin marca/modelo/versión.",
+              }}
+            />
           </CardContent>
           <CardFooter>
             <Button type="submit" className="w-full" disabled={isSubmitting}>
