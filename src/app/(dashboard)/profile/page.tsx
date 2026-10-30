@@ -1,16 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AtSign, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertCircle, AtSign, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardHeader,
-  CardTitle,
   CardDescription,
   CardContent,
   CardFooter,
@@ -144,10 +143,10 @@ function AliasCard() {
   return (
     <Card className="w-full max-w-lg">
       <CardHeader>
-        <CardTitle className="text-lg font-semibold flex items-center gap-2">
-          <AtSign className="h-4 w-4" />
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <AtSign className="h-4 w-4" aria-hidden="true" />
           Mi alias
-        </CardTitle>
+        </h2>
         <CardDescription>
           Tu alias público lo ven otros usuarios al transferirte un vehículo.
         </CardDescription>
@@ -155,14 +154,18 @@ function AliasCard() {
       <CardContent className="grid gap-4">
         {actionFeedback && (
           <div
-            role="alert"
-            className={`flex items-center gap-2 rounded-lg border p-3 text-sm ${
+            role={actionFeedback.kind === "success" ? "status" : "alert"}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
               actionFeedback.kind === "success"
-                ? "border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200"
-                : "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+                ? "border-success/40 bg-success/10 text-success-foreground"
+                : "border-destructive/40 bg-destructive/10 text-destructive"
             }`}
           >
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            {actionFeedback.kind === "success" ? (
+              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+            ) : (
+              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+            )}
             {actionFeedback.text}
           </div>
         )}
@@ -242,6 +245,14 @@ export default function ProfilePage() {
   const changePassword = useChangePassword();
   const [success, setSuccess] = useState(false);
 
+  // El mensaje de éxito se oculta solo después de unos segundos: feedback
+  // transitorio, no un estado permanente (la mutación no se re-ejecuta sola).
+  useEffect(() => {
+    if (!success) return;
+    const timer = setTimeout(() => setSuccess(false), 5000);
+    return () => clearTimeout(timer);
+  }, [success]);
+
   const {
     register,
     handleSubmit,
@@ -272,7 +283,7 @@ export default function ProfilePage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Mi Perfil</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Gestiona tu información personal y seguridad.
+          Administrá tu información personal y tu seguridad.
         </p>
       </div>
 
@@ -283,18 +294,19 @@ export default function ProfilePage() {
 
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">
-            Cambiar contraseña
-          </CardTitle>
+          <h2 className="text-lg font-semibold">Cambiar contraseña</h2>
           <CardDescription>
-            Actualiza tu contraseña para mantener tu cuenta segura.
+            Actualizá tu contraseña para mantener tu cuenta segura.
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
           <CardContent className="grid gap-4">
             {success && (
-              <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <div
+                role="status"
+                className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/10 px-3 py-2 text-sm text-success-foreground"
+              >
+                <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
                 Contraseña actualizada exitosamente.
               </div>
             )}
@@ -302,7 +314,7 @@ export default function ProfilePage() {
             <PasswordInput
               id="currentPassword"
               label="Contraseña actual"
-              placeholder="Ingresa tu contraseña actual"
+              placeholder="Ingresá tu contraseña actual"
               autoComplete="current-password"
               error={errors.currentPassword?.message}
               register={register("currentPassword")}

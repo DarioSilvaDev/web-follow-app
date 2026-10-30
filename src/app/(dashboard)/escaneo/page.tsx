@@ -31,7 +31,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -138,10 +137,10 @@ export default function ScannerPage() {
 
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <ScanLine className="h-5 w-5 text-primary" />
+          <h2 className="flex items-center gap-2 text-lg">
+            <ScanLine className="h-5 w-5 text-primary" aria-hidden="true" />
             Cámara
-          </CardTitle>
+          </h2>
           <CardDescription>
             Apuntá la cámara al QR. Si la cámara no está disponible, usá el
             ingreso manual.
@@ -150,8 +149,13 @@ export default function ScannerPage() {
         <CardContent className="flex flex-col gap-4">
           {scanning ? (
             <div className="flex flex-col gap-3">
+              {/* Región con nombre accesible: el <video> que inyecta
+                  html5-qrcode queda dentro; sin esto el lector de pantalla no
+                  anuncia qué es ese bloque. */}
               <div
                 id={videoContainerId}
+                role="region"
+                aria-label="Vista de la cámara"
                 className="override-h5q-width [--h5q-width:100%] relative overflow-hidden rounded-xl border border-border bg-muted/40 [&_video]:max-w-full [&_video]:rounded-xl"
               />
               <Button
@@ -189,10 +193,10 @@ export default function ScannerPage() {
 
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <KeyRound className="h-5 w-5 text-primary" />
+          <h2 className="flex items-center gap-2 text-lg">
+            <KeyRound className="h-5 w-5 text-primary" aria-hidden="true" />
             Ingreso manual
-          </CardTitle>
+          </h2>
           <CardDescription>
             Pegá el enlace del QR o el token de transferencia.
           </CardDescription>
@@ -220,7 +224,7 @@ export default function ScannerPage() {
               )}
             </div>
             <Button type="submit" className="self-start">
-              Ir al QR
+              Abrir el QR de transferencia
             </Button>
           </form>
         </CardContent>

@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { ArrowLeft, Eye, Loader2, Search } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Eye, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -273,9 +273,13 @@ export default function NewCareEpisodePage() {
       {createdEpisodeId ? (
         <Card>
           <CardContent className="grid gap-3">
-            <p role="status" className="text-sm font-medium text-primary">
+            <div
+              role="status"
+              className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/10 px-3 py-2 text-sm font-medium text-success-foreground"
+            >
+              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
               Atención ingresada OK — vehículo {createdPlate}
-            </p>
+            </div>
             <p className="text-sm text-muted-foreground">
               El episodio quedó abierto y forma parte de la historia del
               vehículo.
@@ -328,6 +332,7 @@ export default function NewCareEpisodePage() {
           {/* Búsqueda por placa */}
           <Card>
             <CardContent className="grid gap-4">
+              <h2 className="text-base font-semibold">Buscar vehículo</h2>
               <form onSubmit={handleLookupSubmit} className="grid gap-2">
                 <Label htmlFor="plate">Placa del vehículo</Label>
                 <div className="flex gap-2">
@@ -403,6 +408,9 @@ export default function NewCareEpisodePage() {
             <Card>
               <form onSubmit={handleSubmit(onSubmit)} noValidate>
                 <CardContent className="grid gap-4">
+                  <h2 className="text-base font-semibold">
+                    Registrar check-in
+                  </h2>
                   <div className="grid gap-2">
                     <Label htmlFor="branchId">Sucursal</Label>
                     <Select
@@ -534,9 +542,9 @@ function Heading() {
     <div>
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex min-h-9 items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="h-3.5 w-3.5" />
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
         Volver al inicio
       </Link>
       <h1 className="mt-3 text-2xl font-bold tracking-tight">Nueva atención</h1>

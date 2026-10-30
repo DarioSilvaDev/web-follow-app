@@ -131,7 +131,7 @@ export default function AtencionesPage() {
   // Sin taller seleccionado: WORKSHOP-only por diseño (D-024 A2 / D-035).
   if (workshopId === null) {
     return (
-      <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         <Heading />
         <Card>
           <CardContent>
@@ -152,7 +152,7 @@ export default function AtencionesPage() {
   const meta = listQuery.data?.meta;
 
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <Heading workshopName={workshopName} />
 
       {listQuery.isLoading ? (
@@ -277,9 +277,9 @@ function Heading({ workshopName }: { workshopName?: string }) {
     <div>
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex min-h-9 items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="h-3.5 w-3.5" />
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
         Volver al inicio
       </Link>
       <h1 className="mt-3 text-2xl font-bold tracking-tight">Atenciones</h1>

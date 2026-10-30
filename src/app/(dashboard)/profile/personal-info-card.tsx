@@ -8,7 +8,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import type { SessionUser } from "@/types/auth";
@@ -117,10 +116,10 @@ function PersonalInfoSkeleton() {
   return (
     <Card className="w-full max-w-lg">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-          <UserRound className="h-4 w-4" />
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <UserRound className="h-4 w-4" aria-hidden="true" />
           Datos personales
-        </CardTitle>
+        </h2>
         <CardDescription>Cargando tu información…</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-5">
@@ -170,10 +169,10 @@ export function PersonalInfoCard() {
   return (
     <Card className="w-full max-w-lg">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-          <UserRound className="h-4 w-4" />
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <UserRound className="h-4 w-4" aria-hidden="true" />
           Datos personales
-        </CardTitle>
+        </h2>
         <CardDescription>Información de tu cuenta.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-5">

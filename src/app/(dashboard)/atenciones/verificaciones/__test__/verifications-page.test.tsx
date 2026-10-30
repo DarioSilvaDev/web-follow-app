@@ -4,9 +4,10 @@
  * Critical behaviors (spec 2-2 §5-§9, RF-4/RF-5/RF-8, D-024 A2 / D-035):
  * - WORKSHOP-only: sin taller seleccionado solo orienta (el GET no corre).
  * - GET /care-episodes/verifications: cola del taller del contexto activo.
- * - Confirmar → POST /care-episodes/:id/verify (con window.confirm).
+ * - Confirmar → abre el dialog de confirmación (design system) → POST
+ *   /care-episodes/:id/verify.
  * - Éxito → badge "Verificado por {taller}" y desaparece el botón Confirmar.
- * - Cancelar el confirm → NO llama a la API.
+ * - Cancelar el dialog → NO llama a la API.
  * - Empty state "Sin verificaciones pendientes".
  * - Error de carga + Reintentar.
  * - 409 del verify → mensaje "ya fue verificado por otro taller".
@@ -88,7 +89,6 @@ let VerificationsPage: React.ComponentType;
 beforeEach(async () => {
   vi.clearAllMocks();
   clearWorkshop();
-  vi.spyOn(window, "confirm").mockReturnValue(true);
   const mod = await import(
     "@/app/(dashboard)/atenciones/verificaciones/page"
   );
@@ -144,8 +144,11 @@ describe("Verificaciones page (iteración 2-2)", () => {
       screen.getByText("Pendiente de verificación"),
     ).toBeInTheDocument();
 
-    // Confirmar con window.confirm aceptado.
-    await user.click(screen.getByRole("button", { name: /confirmar/i }));
+    // Confirmar abre el dialog y "Sí, confirmar" ejecuta el POST.
+    await user.click(screen.getByRole("button", { name: /^confirmar$/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /sí, confirmar/i }),
+    );
 
     expect(await screen.findByText(/Verificado por Lubricentro Central/)).toBeInTheDocument();
     expect(
@@ -156,15 +159,15 @@ describe("Verificaciones page (iteración 2-2)", () => {
     expect(mockGetVerifications).toHaveBeenCalledTimes(1);
   });
 
-  it("cancelar el confirm NO llama a verify ni cambia el estado", async () => {
-    vi.mocked(window.confirm).mockReturnValue(false);
+  it("cancelar el dialog NO llama a verify ni cambia el estado", async () => {
     mockGetVerifications.mockResolvedValue([queueItem]);
     selectWorkshop("w1");
 
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole("button", { name: /confirmar/i }));
+    await user.click(await screen.findByRole("button", { name: /^confirmar$/i }));
+    await user.click(screen.getByRole("button", { name: /cancelar/i }));
 
     expect(mockVerify).not.toHaveBeenCalled();
     expect(screen.getByText("Pendiente de verificación")).toBeInTheDocument();
@@ -216,7 +219,10 @@ describe("Verificaciones page (iteración 2-2)", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole("button", { name: /confirmar/i }));
+    await user.click(await screen.findByRole("button", { name: /^confirmar$/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /sí, confirmar/i }),
+    );
 
     expect(
       await screen.findByText(
@@ -239,7 +245,10 @@ describe("Verificaciones page (iteración 2-2)", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole("button", { name: /confirmar/i }));
+    await user.click(await screen.findByRole("button", { name: /^confirmar$/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /sí, confirmar/i }),
+    );
 
     expect(
       await screen.findByText(/el episodio ya no está disponible para tu taller/i),
@@ -254,7 +263,10 @@ describe("Verificaciones page (iteración 2-2)", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole("button", { name: /confirmar/i }));
+    await user.click(await screen.findByRole("button", { name: /^confirmar$/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /sí, confirmar/i }),
+    );
 
     expect(
       await screen.findByText(

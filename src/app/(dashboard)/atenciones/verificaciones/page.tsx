@@ -2,14 +2,28 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, Loader2, RotateCw } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Loader2,
+  RotateCw,
+  ShieldCheck,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useActiveContext } from "@/hooks/use-active-context";
 import { useAuth } from "@/hooks/use-auth";
 import { careEpisodeApi } from "@/lib/api";
@@ -23,6 +37,11 @@ import type { CareEpisodeVerificationItem } from "@/types/care-episode";
 //
 // WORKSHOP-only: sin taller seleccionado la página solo orienta (el backend
 // responde 403 en PERSONAL — WorkshopOnly).
+//
+// La confirmación es destructiva y auditada (queda en la historia del
+// vehículo), así que se hace con un diálogo del design system en lugar de
+// `window.confirm` (consistente en todas las plataformas, accesible y
+// estilado).
 // ---------------------------------------------------------------------------
 
 function formatDate(value: string): string {
@@ -85,15 +104,16 @@ export default function VerificationsPage() {
   // refetch (el item sale de la cola en el próximo GET).
   const [itemStates, setItemStates] = useState<Record<string, ItemState>>({});
 
+  // Ítem elegido para confirmar (dialog abierto). null = dialog cerrado.
+  const [pendingItem, setPendingItem] =
+    useState<CareEpisodeVerificationItem | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+
   const isVerified = (itemId: string) =>
     itemStates[itemId]?.status === "verified";
 
-  const confirmVerify = async (item: CareEpisodeVerificationItem) => {
-    const target = workshopName ?? "mi taller";
-    if (!window.confirm(`¿Confirmar que tu taller realizó "${item.title}"?`)) {
-      return;
-    }
-
+  const executeVerify = async (item: CareEpisodeVerificationItem) => {
+    setIsVerifying(true);
     try {
       await careEpisodeApi.verifyCareEpisode(item.id);
       setItemStates((prev) => ({ ...prev, [item.id]: { status: "verified" } }));
@@ -112,6 +132,11 @@ export default function VerificationsPage() {
         ...prev,
         [item.id]: { status: "error", message },
       }));
+    } finally {
+      setIsVerifying(false);
+      // Cierra el dialog en éxito y en error: el resultado se lee en la card
+      // (verificado o mensaje de error), no dentro del diálogo.
+      setPendingItem(null);
     }
   };
 
@@ -168,9 +193,11 @@ export default function VerificationsPage() {
       ) : itemsQuery.data?.length === 0 ? (
         <Card>
           <CardContent>
-            <p className="py-4 text-center text-sm text-muted-foreground">
-              Sin verificaciones pendientes
-            </p>
+            <EmptyState
+              icon={ShieldCheck}
+              title="Sin verificaciones pendientes"
+              description="Cuando un propietario registre un servicio y te declare como taller responsable, vas a verlo acá para confirmarlo."
+            />
           </CardContent>
         </Card>
       ) : (
@@ -184,17 +211,17 @@ export default function VerificationsPage() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-semibold">{item.title}</p>
                       {isVerified(item.id) ? (
-                        <span
-                          className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
+                        <Badge
+                          variant="success"
                           data-testid={`verified-${item.id}`}
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
                           Verificado por {workshopName ?? "este taller"}
-                        </span>
+                        </Badge>
                       ) : (
-                        <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
+                        <Badge variant="warning">
                           Pendiente de verificación
-                        </span>
+                        </Badge>
                       )}
                     </div>
 
@@ -231,7 +258,7 @@ export default function VerificationsPage() {
                       <div>
                         <Button
                           size="sm"
-                          onClick={() => void confirmVerify(item)}
+                          onClick={() => setPendingItem(item)}
                         >
                           Confirmar
                         </Button>
@@ -244,6 +271,45 @@ export default function VerificationsPage() {
           })}
         </ul>
       )}
+
+      {/* Dialog de confirmación (reemplaza al window.confirm nativo). */}
+      <Dialog
+        open={pendingItem !== null}
+        onOpenChange={(open) => {
+          if (!open && !isVerifying) setPendingItem(null);
+        }}
+      >
+        {pendingItem ? (
+          <DialogPopup className="sm:max-w-md">
+            <DialogTitle>Confirmar verificación</DialogTitle>
+            <DialogDescription>
+              Vas a confirmar que {workshopName ?? "tu taller"} realizó “
+              {pendingItem.title}”. Esta acción queda registrada en la historia
+              del vehículo y no se puede deshacer.
+            </DialogDescription>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                disabled={isVerifying}
+                onClick={() => setPendingItem(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                disabled={isVerifying}
+                onClick={() => void executeVerify(pendingItem)}
+              >
+                {isVerifying ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                Sí, confirmar
+              </Button>
+            </div>
+          </DialogPopup>
+        ) : null}
+      </Dialog>
     </div>
   );
 }
@@ -253,9 +319,9 @@ function Heading() {
     <div>
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex min-h-9 items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="h-3.5 w-3.5" />
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
         Volver al inicio
       </Link>
       <h1 className="mt-3 text-2xl font-bold tracking-tight">

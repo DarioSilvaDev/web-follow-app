@@ -19,8 +19,10 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, Store } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkshopBranchesSection } from "@/components/workshop/workshop-branches-section";
 import { WorkshopCompletenessCard } from "@/components/workshop/workshop-completeness-card";
@@ -54,42 +56,27 @@ export default function WorkshopDetailPage() {
       )}
 
       {isNotFound && (
-        <Card>
-          <CardContent className="flex flex-col items-start gap-3 py-10">
-            <Store className="h-6 w-6 text-muted-foreground" />
-            <div>
-              <p className="font-medium">Taller no encontrado</p>
-              <p className="text-sm text-muted-foreground">
-                No existe o fue eliminado.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Store}
+          title="Taller no encontrado"
+          description="No existe o fue eliminado."
+        />
       )}
 
       {status === 403 && (
-        <Card>
-          <CardContent className="flex flex-col items-start gap-3 py-10">
-            <Store className="h-6 w-6 text-muted-foreground" />
-            <div>
-              <p className="font-medium">No tenés acceso a este taller</p>
-              <p className="text-sm text-muted-foreground">
-                Tu membresía no está activa o fue dada de baja.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Store}
+          title="No tenés acceso a este taller"
+          description="Tu membresía no está activa o fue dada de baja."
+        />
       )}
 
       {!isNotFound && status !== 403 && workshopQuery.isError && (
-        <Card>
-          <CardContent className="flex flex-col items-start gap-3 py-10">
-            <p className="font-medium text-destructive">
-              No se pudo cargar la información del taller
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {resolveWorkshopDetailError(workshopQuery.error)}
-            </p>
+        <EmptyState
+          icon={Store}
+          title="No se pudo cargar la información del taller"
+          description={resolveWorkshopDetailError(workshopQuery.error)}
+          action={
             <Button
               type="button"
               variant="outline"
@@ -99,8 +86,8 @@ export default function WorkshopDetailPage() {
               <RefreshCw className="h-3.5 w-3.5" />
               Reintentar
             </Button>
-          </CardContent>
-        </Card>
+          }
+        />
       )}
 
       {workshop && (
@@ -123,15 +110,9 @@ export default function WorkshopDetailPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 pt-1 text-xs">
-                    <span
-                      className={
-                        workshop.isActive
-                          ? "rounded-full bg-emerald-500/15 px-2 py-0.5 font-medium text-emerald-600"
-                          : "rounded-full bg-muted px-2 py-0.5 font-medium text-muted-foreground"
-                      }
-                    >
+                    <Badge variant={workshop.isActive ? "success" : "secondary"}>
                       {workshop.isActive ? "Activo" : "Inactivo"}
-                    </span>
+                    </Badge>
                   </div>
                 </div>
               </div>

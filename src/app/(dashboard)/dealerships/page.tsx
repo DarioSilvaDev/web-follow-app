@@ -15,9 +15,9 @@
  */
 
 import Link from "next/link";
-import { Plus, Store } from "lucide-react";
+import { Plus, RotateCw, Store } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardDescription,
@@ -63,6 +63,22 @@ export default function DealershipsPage() {
             />
           ))}
         </div>
+      ) : mineQuery.isError ? (
+        <EmptyState
+          icon={Store}
+          title="No se pudieron cargar tus concesionarias"
+          description="Ocurrió un error inesperado. Intentá nuevamente."
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void mineQuery.refetch()}
+            >
+              <RotateCw className="mr-1.5 h-3.5 w-3.5" />
+              Reintentar
+            </Button>
+          }
+        />
       ) : dealerships.length === 0 ? (
         <EmptyState
           icon={Store}
