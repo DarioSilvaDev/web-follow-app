@@ -12,13 +12,18 @@
  * `workshop.specialties.manage`) están declarados en el backend pero ausentes
  * del seed, por lo que darían 403 garantizado (ver `BE-001`).
  *
+ * El header también expone los CTAs de atenciones (`/atenciones/nueva` y
+ * `/atenciones`): sin ellos la página era un callejón sin salida hacia la
+ * operación diaria del taller (F-023: las atenciones no son items de nav).
+ *
  * Espejo de `/dealerships/[id]`, que ya establece el patrón del repo.
  */
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, Store } from "lucide-react";
+import { FileText, RefreshCw, Store, Wrench } from "lucide-react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,26 +99,44 @@ export default function WorkshopDetailPage() {
         <>
           <Card>
             <CardHeader>
-              <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-muted text-muted-foreground">
-                  <Store className="h-5 w-5" />
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-muted text-muted-foreground">
+                    <Store className="h-5 w-5" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <h1 className="text-2xl font-bold tracking-tight">
+                      {workshop.name}
+                    </h1>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
+                      {workshop.legalName && <span>{workshop.legalName}</span>}
+                      {workshop.taxId && <span>· {workshop.taxId}</span>}
+                      {!workshop.legalName && !workshop.taxId && (
+                        <span>Sin razón social / CUIT cargados</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 pt-1 text-xs">
+                      <Badge
+                        variant={workshop.isActive ? "success" : "secondary"}
+                      >
+                        {workshop.isActive ? "Activo" : "Inactivo"}
+                      </Badge>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <h1 className="text-2xl font-bold tracking-tight">
-                    {workshop.name}
-                  </h1>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
-                    {workshop.legalName && <span>{workshop.legalName}</span>}
-                    {workshop.taxId && <span>· {workshop.taxId}</span>}
-                    {!workshop.legalName && !workshop.taxId && (
-                      <span>Sin razón social / CUIT cargados</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 pt-1 text-xs">
-                    <Badge variant={workshop.isActive ? "success" : "secondary"}>
-                      {workshop.isActive ? "Activo" : "Inactivo"}
-                    </Badge>
-                  </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link href="/atenciones/nueva">
+                    <Button className="min-h-11 px-5">
+                      <Wrench className="mr-1.5" aria-hidden="true" />
+                      Registrar atención
+                    </Button>
+                  </Link>
+                  <Link href="/atenciones">
+                    <Button variant="outline" className="min-h-11">
+                      <FileText className="mr-1.5" aria-hidden="true" />
+                      Ver atenciones
+                    </Button>
+                  </Link>
                 </div>
               </div>
             </CardHeader>

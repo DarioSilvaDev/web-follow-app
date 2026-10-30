@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, RotateCw, Wrench } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, RotateCw, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminTablePagination } from "@/components/admin/admin-table-pagination";
@@ -153,7 +153,7 @@ export default function AtencionesPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-      <Heading workshopName={workshopName} />
+      <Heading workshopName={workshopName} showNewAction={items.length > 0} />
 
       {listQuery.isLoading ? (
         <Card>
@@ -272,7 +272,13 @@ export default function AtencionesPage() {
   );
 }
 
-function Heading({ workshopName }: { workshopName?: string }) {
+function Heading({
+  workshopName,
+  showNewAction = false,
+}: {
+  workshopName?: string;
+  showNewAction?: boolean;
+}) {
   return (
     <div>
       <Link
@@ -282,7 +288,17 @@ function Heading({ workshopName }: { workshopName?: string }) {
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
         Volver al inicio
       </Link>
-      <h1 className="mt-3 text-2xl font-bold tracking-tight">Atenciones</h1>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold tracking-tight">Atenciones</h1>
+        {showNewAction && (
+          <Link href="/atenciones/nueva">
+            <Button className="min-h-11 px-5">
+              <Plus className="mr-1.5" aria-hidden="true" />
+              Registrar atención
+            </Button>
+          </Link>
+        )}
+      </div>
       <p className="mt-1 text-sm text-muted-foreground">
         Atenciones registradas por {workshopName ?? "tu taller"}
       </p>
