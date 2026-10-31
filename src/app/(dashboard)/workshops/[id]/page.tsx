@@ -12,9 +12,10 @@
  * `workshop.specialties.manage`) están declarados en el backend pero ausentes
  * del seed, por lo que darían 403 garantizado (ver `BE-001`).
  *
- * El header también expone los CTAs de atenciones (`/atenciones/nueva` y
- * `/atenciones`): sin ellos la página era un callejón sin salida hacia la
- * operación diaria del taller (F-023: las atenciones no son items de nav).
+ * El header también expone los CTAs de atenciones (`/atenciones/nueva`,
+ * `/atenciones` y `/atenciones/verificaciones`): sin ellos la página era un
+ * callejón sin salida hacia la operación diaria del taller (F-023: las
+ * atenciones no son items de nav).
  *
  * Espejo de `/dealerships/[id]`, que ya establece el patrón del repo.
  */
@@ -22,7 +23,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, RefreshCw, Store, Wrench } from "lucide-react";
+import { ClipboardCheck, FileText, RefreshCw, Store, Wrench } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -135,6 +136,12 @@ export default function WorkshopDetailPage() {
                     <Button variant="outline" className="min-h-11">
                       <FileText className="mr-1.5" aria-hidden="true" />
                       Ver atenciones
+                    </Button>
+                  </Link>
+                  <Link href="/atenciones/verificaciones">
+                    <Button variant="outline" className="min-h-11">
+                      <ClipboardCheck className="mr-1.5" aria-hidden="true" />
+                      Verificaciones
                     </Button>
                   </Link>
                 </div>
