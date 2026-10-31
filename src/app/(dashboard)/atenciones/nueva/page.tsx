@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { ArrowLeft, CheckCircle2, Eye, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import {
   Card,
   CardContent,
@@ -273,13 +274,9 @@ export default function NewCareEpisodePage() {
       {createdEpisodeId ? (
         <Card>
           <CardContent className="grid gap-3">
-            <div
-              role="status"
-              className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/10 px-3 py-2 text-sm font-medium text-success-foreground"
-            >
-              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <Callout variant="success" icon={CheckCircle2}>
               Atención ingresada OK — vehículo {createdPlate}
-            </div>
+            </Callout>
             <p className="text-sm text-muted-foreground">
               El episodio quedó abierto y forma parte de la historia del
               vehículo.

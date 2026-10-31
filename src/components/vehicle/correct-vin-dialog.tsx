@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
@@ -148,12 +149,9 @@ function CorrectVinDialogBody({
         </div>
 
         {dialogError && (
-          <p
-            role="alert"
-            className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
+          <Callout variant="destructive" role="alert">
             {dialogError}
-          </p>
+          </Callout>
         )}
       </div>
 

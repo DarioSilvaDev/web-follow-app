@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import {
   Card,
   CardContent,
@@ -245,12 +246,9 @@ function TransferItemCard({
         )}
 
         {errorMessage && (
-          <p
-            role="alert"
-            className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
+          <Callout variant="destructive" role="alert">
             {errorMessage}
-          </p>
+          </Callout>
         )}
 
         {(isPending || canCancel) && (onAccept || onReject || onCancel) && (
@@ -551,12 +549,7 @@ export default function TransferenciasPage() {
       </div>
 
       {successBanner && (
-        <div
-          role="status"
-          className="rounded-lg border border-success bg-success/10 px-3 py-2 text-sm text-success-foreground"
-        >
-          {successBanner}
-        </div>
+        <Callout variant="success">{successBanner}</Callout>
       )}
 
       <Tabs

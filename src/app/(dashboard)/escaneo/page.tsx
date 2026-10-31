@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import {
   Card,
   CardContent,
@@ -181,12 +182,9 @@ export default function ScannerPage() {
           )}
 
           {cameraError && (
-            <p
-              role="alert"
-              className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            >
+            <Callout variant="destructive" role="alert">
               {cameraError}
-            </p>
+            </Callout>
           )}
         </CardContent>
       </Card>

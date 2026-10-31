@@ -7,6 +7,7 @@ import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, AtSign, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import {
   Card,
   CardHeader,
@@ -153,21 +154,17 @@ function AliasCard() {
       </CardHeader>
       <CardContent className="grid gap-4">
         {actionFeedback && (
-          <div
+          <Callout
+            variant={
+              actionFeedback.kind === "success" ? "success" : "destructive"
+            }
             role={actionFeedback.kind === "success" ? "status" : "alert"}
-            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-              actionFeedback.kind === "success"
-                ? "border-success/40 bg-success/10 text-success-foreground"
-                : "border-destructive/40 bg-destructive/10 text-destructive"
-            }`}
+            icon={
+              actionFeedback.kind === "success" ? CheckCircle2 : AlertCircle
+            }
           >
-            {actionFeedback.kind === "success" ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-            ) : (
-              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
-            )}
             {actionFeedback.text}
-          </div>
+          </Callout>
         )}
 
         {isLoading ? (
@@ -302,13 +299,9 @@ export default function ProfilePage() {
         <form onSubmit={handleSubmit(onSubmit)}>
           <CardContent className="grid gap-4">
             {success && (
-              <div
-                role="status"
-                className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/10 px-3 py-2 text-sm text-success-foreground"
-              >
-                <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <Callout variant="success" icon={CheckCircle2}>
                 Contraseña actualizada exitosamente.
-              </div>
+              </Callout>
             )}
 
             <PasswordInput

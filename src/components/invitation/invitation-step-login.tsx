@@ -10,6 +10,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -66,12 +67,9 @@ export function InvitationStepLogin({
       />
 
       {submitError && (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
+        <Callout variant="destructive" role="alert">
           {submitError}
-        </p>
+        </Callout>
       )}
 
       <Button type="submit" className="w-full" disabled={isSubmitting}>
