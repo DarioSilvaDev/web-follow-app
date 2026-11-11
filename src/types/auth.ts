@@ -12,7 +12,17 @@ export interface SessionUser {
   workshopMemberships: Array<{
     workshopId: string;
     workshop: { id: string; name: string };
-    role: { id: string; code: string; name: string };
+    role: {
+      id: string;
+      code: string;
+      name: string;
+      /**
+       * Códigos de permiso del rol del taller (GET /auth/me). Opcional por
+       * compatibilidad: sesiones cacheadas de antes del cambio no lo traen y
+       * los gates caen al fallback (sin permiso).
+       */
+      permissions?: string[];
+    };
   }>;
   /**
    * Milestone consignación (D-102 / resolución PM §3.4): membresías en

@@ -56,6 +56,38 @@ export function can(
 }
 
 /**
+ * Gate de permiso DENTRO de un taller concreto.
+ *
+ * `can()` solo lee roles de SISTEMA (`/auth/me.roles`), que un owner/mecánico
+ * de taller no tiene (`roles: []`). Los permisos de taller viven en la
+ * membresía (`workshopMemberships[].role.permissions`, poblados por
+ * `GetSessionHandler` desde `workshop_role_permissions`).
+ *
+ * Reglas:
+ * - `can(user, permission)` primero: super_admin y roles de plataforma
+ *   conservan acceso (el backend los autoriza por bypass).
+ * - Sin membresía activa para `workshopId` → false.
+ * - Sesiones viejas sin `role.permissions` → false (fallback seguro: se
+ *   oculta la acción, el backend sigue siendo la autoridad).
+ *
+ * NUNCA es security boundary (AGENTS.md §22).
+ */
+export function canInWorkshop(
+  user: SessionUser | null | undefined,
+  workshopId: string | null | undefined,
+  permission: string,
+): boolean {
+  if (!user) return false;
+  if (can(user, permission)) return true;
+  if (!workshopId) return false;
+
+  const membership = (user.workshopMemberships ?? []).find(
+    (m) => m.workshopId === workshopId,
+  );
+  return membership?.role.permissions?.includes(permission) ?? false;
+}
+
+/**
  * Comprueba si el usuario tiene un role TYPE concreto (p. ej. "super_admin").
  * Util para reglas de UX que dependen del rol y no de un permiso puntual
  * (P1: desbloqueo del CUIT a super_admin en la edición admin).

@@ -52,7 +52,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { useActiveContext } from "@/hooks/use-active-context";
-import { can } from "@/lib/admin-access";
+import { canInWorkshop } from "@/lib/admin-access";
 import { vehicleClaimApi } from "@/lib/api";
 import {
   CLAIM_PANEL_ALREADY_TAKEN,
@@ -115,10 +115,24 @@ export function ClaimInvitePanel({
   const [copied, setCopied] = useState(false);
 
   // ── Gates de UX (nunca security boundary — backend enforcea) ──
-  const canList = can(user, "vehicle-claim.list");
-  const canCreate = can(user, "vehicle-claim.create");
-  const canRevoke = can(user, "vehicle-claim.revoke");
-  const canReview = can(user, "vehicle-claim.review");
+  // `canInWorkshop`: el owner/mecánico no tiene roles de sistema (`roles: []`);
+  // sus permisos vienen en la membresía del taller activo.
+  const canList = canInWorkshop(user, activeWorkshopId, "vehicle-claim.list");
+  const canCreate = canInWorkshop(
+    user,
+    activeWorkshopId,
+    "vehicle-claim.create",
+  );
+  const canRevoke = canInWorkshop(
+    user,
+    activeWorkshopId,
+    "vehicle-claim.revoke",
+  );
+  const canReview = canInWorkshop(
+    user,
+    activeWorkshopId,
+    "vehicle-claim.review",
+  );
 
   const listQuery = useQuery({
     queryKey: ["vehicle-claims", "list", workshopId],

@@ -13,7 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useActiveContext } from "@/hooks/use-active-context";
 import { useAuth } from "@/hooks/use-auth";
-import { can } from "@/lib/admin-access";
+import { canInWorkshop } from "@/lib/admin-access";
 import { vehicleClaimApi } from "@/lib/api";
 import { CLAIM_PANEL_NO_PERMISSION } from "@/lib/vehicle-claim-errors";
 import type {
@@ -100,7 +100,8 @@ export default function ReclamosPage() {
     }
   }, [status, hasWorkshopMembership, router]);
 
-  const canList = can(user, "vehicle-claim.list");
+  // Gate por taller: el owner/mecánico no tiene roles de sistema.
+  const canList = canInWorkshop(user, workshopId, "vehicle-claim.list");
 
   const [chip, setChip] = useState<string>("all");
   const [page, setPage] = useState(1);

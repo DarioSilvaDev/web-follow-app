@@ -11,7 +11,7 @@
  * boundary (AGENTS.md §22) — el backend enforcea cada endpoint /admin.
  */
 import { describe, expect, it } from "vitest";
-import { can, hasAdminAccess } from "@/lib/admin-access";
+import { can, canInWorkshop, hasAdminAccess } from "@/lib/admin-access";
 import type { SessionUser } from "@/types/auth";
 
 function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
@@ -187,5 +187,96 @@ describe("can (gate de sección)", () => {
     });
     expect(can(adminWithoutPermissions, "admin.dealerships.list")).toBe(false);
     expect(can(adminWithoutPermissions, "admin.dashboard")).toBe(false);
+  });
+});
+
+describe("canInWorkshop (gate por taller)", () => {
+  const membership = (
+    workshopId: string,
+    code: string,
+    permissions?: string[],
+  ) => ({
+    workshopId,
+    workshop: { id: workshopId, name: `Taller ${workshopId}` },
+    role: { id: `role-${workshopId}`, code, name: code, permissions },
+  });
+
+  it("owner de taller sin roles de sistema → true con el permiso de la membresía", () => {
+    const owner = makeUser({
+      roles: [],
+      workshopMemberships: [
+        membership("ws-1", "owner", [
+          "vehicle-claim.create",
+          "vehicle-claim.list",
+          "vehicle-claim.review",
+          "vehicle-claim.revoke",
+        ]),
+      ],
+    });
+
+    expect(canInWorkshop(owner, "ws-1", "vehicle-claim.list")).toBe(true);
+    expect(canInWorkshop(owner, "ws-1", "vehicle-claim.revoke")).toBe(true);
+  });
+
+  it("mecánico: create/list sí, review/revoke no (espejo del backend)", () => {
+    const mechanic = makeUser({
+      roles: [],
+      workshopMemberships: [
+        membership("ws-1", "mechanic", [
+          "vehicle-claim.create",
+          "vehicle-claim.list",
+        ]),
+      ],
+    });
+
+    expect(canInWorkshop(mechanic, "ws-1", "vehicle-claim.list")).toBe(true);
+    expect(canInWorkshop(mechanic, "ws-1", "vehicle-claim.create")).toBe(true);
+    expect(canInWorkshop(mechanic, "ws-1", "vehicle-claim.review")).toBe(false);
+    expect(canInWorkshop(mechanic, "ws-1", "vehicle-claim.revoke")).toBe(false);
+  });
+
+  it("no mezcla talleres: el permiso de ws-1 no aplica en ws-2", () => {
+    const owner = makeUser({
+      roles: [],
+      workshopMemberships: [
+        membership("ws-1", "owner", ["vehicle-claim.list"]),
+        membership("ws-2", "mechanic", ["vehicle-claim.list"]),
+      ],
+    });
+
+    expect(canInWorkshop(owner, "ws-1", "vehicle-claim.revoke")).toBe(false);
+    expect(canInWorkshop(owner, "ws-2", "vehicle-claim.list")).toBe(true);
+    expect(canInWorkshop(owner, "ws-3", "vehicle-claim.list")).toBe(false);
+  });
+
+  it("super_admin conserva el bypass aunque no tenga membresía", () => {
+    const superAdmin = makeUser({
+      roles: [
+        {
+          id: "r1",
+          type: "super_admin",
+          name: "Super Admin",
+          permissions: ["*"],
+        },
+      ],
+    });
+
+    expect(canInWorkshop(superAdmin, "ws-1", "vehicle-claim.list")).toBe(true);
+    expect(canInWorkshop(superAdmin, null, "vehicle-claim.list")).toBe(true);
+  });
+
+  it("sesión vieja sin role.permissions → false (fallback seguro)", () => {
+    const legacy = makeUser({
+      roles: [],
+      workshopMemberships: [membership("ws-1", "owner")],
+    });
+
+    expect(canInWorkshop(legacy, "ws-1", "vehicle-claim.list")).toBe(false);
+  });
+
+  it("null/undefined → false", () => {
+    expect(canInWorkshop(null, "ws-1", "vehicle-claim.list")).toBe(false);
+    expect(canInWorkshop(undefined, "ws-1", "vehicle-claim.list")).toBe(false);
+    expect(canInWorkshop(makeUser(), null, "vehicle-claim.list")).toBe(false);
   });
 });
