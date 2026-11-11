@@ -10,12 +10,24 @@ describe("isSafeNextPath", () => {
     expect(isSafeNextPath("/transfer/qr/abc-DEF_1.2~3")).toBe(true);
   });
 
+  it("accepts the claim deep link (F-1, copy §1.8)", () => {
+    // Token real de reclamo: 64 hex.
+    expect(
+      isSafeNextPath(
+        "/reclamo/9f2c7d1e4a8b3c5f0d1e2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d",
+      ),
+    ).toBe(true);
+    expect(isSafeNextPath("/reclamo/abc-DEF_1.2~3")).toBe(true);
+  });
+
   it("rejects arbitrary internal routes (not deep links)", () => {
     expect(isSafeNextPath("/vehicles/v1")).toBe(false);
     expect(isSafeNextPath("/dashboard")).toBe(false);
     expect(isSafeNextPath("/admin/users")).toBe(false);
     expect(isSafeNextPath("/transfer/qr")).toBe(false); // no token segment
     expect(isSafeNextPath("/transfer/qr/")).toBe(false); // empty token
+    expect(isSafeNextPath("/reclamo")).toBe(false); // no token segment
+    expect(isSafeNextPath("/reclamo/")).toBe(false); // empty token
   });
 
   it("rejects absolute and protocol-relative URLs (open redirect)", () => {
@@ -35,6 +47,8 @@ describe("isSafeNextPath", () => {
     expect(isSafeNextPath("/transfer/qr/a b")).toBe(false);
     expect(isSafeNextPath("/transfer/qr/a/b")).toBe(false);
     expect(isSafeNextPath("/transfer/qr/%2Fetc")).toBe(false);
+    expect(isSafeNextPath("/reclamo/a b")).toBe(false);
+    expect(isSafeNextPath("/reclamo/a/b")).toBe(false);
   });
 });
 

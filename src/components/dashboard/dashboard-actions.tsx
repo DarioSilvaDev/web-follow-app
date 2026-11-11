@@ -8,8 +8,9 @@
  *     WORKSHOP    → "Nueva atención" (/atenciones/nueva)
  *     DEALERSHIP  → sin acción propia (no existe alta de vehículo/atención
  *                   para concesionaria en este flujo — no se inventa ruta)
- * - SECUNDARIAS (las quick actions que ya existían — F-023 / D-105):
- *     WORKSHOP    → Atenciones · Verificaciones
+ * - SECUNDARIAS (las quick actions que ya existían — F-023 / D-105;
+ *   + Reclamos de F-2):
+ *     WORKSHOP    → Atenciones · Verificaciones · Reclamos
  *     DEALERSHIP  → Ver vehículos · Miembros
  *
  * Todas las rutas son las MISMAS que usaba el dashboard anterior: cambia la
@@ -17,7 +18,7 @@
  */
 
 import Link from "next/link";
-import { Car, FileText, Plus, Users, Wrench } from "lucide-react";
+import { Car, FileText, Link2, Plus, Users, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useActiveContext } from "@/hooks/use-active-context";
@@ -53,6 +54,10 @@ export function DashboardActions({ className }: DashboardActionsProps) {
         label: "Verificaciones",
         icon: FileText,
       },
+      // F-2: acceso al listado de reclamos del taller (sin nav item —
+      // decisión derivada, flag en el reporte). La página maneja su propio
+      // estado sin permiso (§2.14).
+      { href: "/reclamos", label: "Reclamos", icon: Link2 },
     );
   }
   if (isDealership && activeContext?.type === "DEALERSHIP") {

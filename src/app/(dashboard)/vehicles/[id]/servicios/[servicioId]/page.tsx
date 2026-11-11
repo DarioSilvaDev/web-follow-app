@@ -26,6 +26,7 @@ import {
 import { AttachmentsUploader } from "@/components/care-episode/attachments-uploader";
 import { EvidenceGallery } from "@/components/care-episode/evidence-gallery";
 import { RemoveAttachmentDialog } from "@/components/care-episode/remove-attachment-dialog";
+import { ClaimInvitePanel } from "@/components/vehicle-claim/claim-invite-panel";
 import { useAuth } from "@/hooks/use-auth";
 import { useActiveContext } from "@/hooks/use-active-context";
 import { careEpisodeApi } from "@/lib/api";
@@ -344,6 +345,14 @@ export default function CareEpisodeDetailPage() {
           />
         </CardContent>
       </Card>
+
+      {/* ── Reclamo del vehículo (F-2) ── */}
+      <ClaimInvitePanel
+        vehicleId={vehicleId}
+        careEpisodeId={servicioId}
+        licensePlate={detail.vehicle.licensePlate}
+        workshopId={detail.workshopId}
+      />
 
       {/* ── Confirmación de eliminación (S5) ── */}
       <RemoveAttachmentDialog

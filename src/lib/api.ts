@@ -89,6 +89,17 @@ import type {
   GeneratedTransferQr,
   VehicleVersion,
 } from "@/types/vehicle";
+import type {
+  CommitClaimResult,
+  PublicClaimBootstrap,
+  ClaimChallenge,
+  VerifyClaimResult,
+  WorkshopClaimCreateData,
+  WorkshopClaimDetail,
+  WorkshopClaimListResponse,
+  WorkshopClaimRevokeResult,
+  WorkshopClaimReviewResult,
+} from "@/types/vehicle-claim";
 
 export { HTTPError, isHTTPError };
 
@@ -140,6 +151,10 @@ function isAuthApiPath(path: string): boolean {
  *   pública de claim/validación.
  * - `admin/*` — workspace admin de plataforma (workspace PLATFORM); el
  *   contexto operativo del usuario no aplica a estas operaciones.
+ * - `vehicle-claims/public/*` — API PÚBLICA de reclamo (F-1, ruta
+ *   `/reclamo/[token]`): el visitante no tiene contexto activo y un WORKSHOP
+ *   stale no debe inyectarse en la verificación pública (idéntico al prefijo
+ *   público de los wizards).
  *
  * Extiende la exclusión existente de `auth/*` (RF-3).
  */
@@ -149,7 +164,8 @@ function isContextFreePath(path: string): boolean {
     path.startsWith("dealerships/wizard/") ||
     path.startsWith("workshops/wizard/") ||
     path.startsWith("users/wizard/") ||
-    path.startsWith("admin/")
+    path.startsWith("admin/") ||
+    path.startsWith("vehicle-claims/public/")
   );
 }
 
@@ -243,6 +259,17 @@ export const api = ky.create({
               relativePath.startsWith("workshops/wizard/invitations") ||
               relativePath.startsWith("users/wizard/invitations"));
           if (isInvitationPreviewGet) {
+            return ky.stop;
+          }
+          // Reclamo de vehículo — API pública (F-1): los GET (bootstrap y
+          // challenge) son PÚBLICOS y jamás devuelven 401 (invalid/expired →
+          // 404/410). No deben disparar el refresh 401. El POST commit SÍ
+          // puede devolver 401 AUTH_REQUIRED (requiere sesión) o
+          // TICKET_EXPIRED; en ese caso el refresh corresponde.
+          const isPublicClaimGet =
+            error.request.method === "GET" &&
+            relativePath.startsWith("vehicle-claims/public/");
+          if (isPublicClaimGet) {
             return ky.stop;
           }
         } catch {
@@ -1234,6 +1261,129 @@ export const invitationApi = {
     api
       .post("users/wizard/claim", { json: input })
       .json<UserWizardClaimResult>()
+      .catch(toApiError),
+};
+
+// ---------------------------------------------------------------------------
+// Vehicle Claims API (F-1 página pública /reclamo/[token] + F-2 panel taller)
+//
+// Contrato backend congelado (api-follow-app src/modules/vehicle-claims):
+// - GET  /vehicle-claims/public/:token                (PÚBLICO) → {status,canVerify}
+// - GET  /vehicle-claims/public/:token/challenge      (PÚBLICO) → {factor,options}
+// - POST /vehicle-claims/public/:token/verify         (PÚBLICO) → verified|manual_review
+// - POST /vehicle-claims/public/:token/commit         (auth opcional) → claimed|manual_review
+// - POST /vehicle-claims                              (taller) → create/reuse
+// - GET  /vehicle-claims?page&limit&status            (taller) → data[] + meta.counts
+// - GET  /vehicle-claims/:id                          (taller) → detail (+claimant)
+// - POST /vehicle-claims/:id/approve|reject|revoke    (taller)
+//
+// TODAS las respuestas vienen envueltas en `{data}` (el listado agrega
+// `meta`); los métodos desenvuelven el envoltorio para que el consumidor
+// reciba el payload directo. El prefijo `vehicle-claims/public/` es
+// context-free y sus GETs no disparan el refresh 401 (ver arriba).
+// ---------------------------------------------------------------------------
+
+export const vehicleClaimApi = {
+  /** GET /vehicle-claims/public/:token → bootstrap del wizard (F-1). */
+  getPublicClaim: (token: string) =>
+    api
+      .get(`vehicle-claims/public/${encodeURIComponent(token)}`)
+      .json<{ data: PublicClaimBootstrap }>()
+      .then((body) => body.data)
+      .catch(toApiError),
+
+  /** GET /vehicle-claims/public/:token/challenge?licensePlate= → factor + opciones. */
+  getClaimChallenge: (token: string, licensePlate: string) =>
+    api
+      .get(`vehicle-claims/public/${encodeURIComponent(token)}/challenge`, {
+        searchParams: { licensePlate },
+      })
+      .json<{ data: ClaimChallenge }>()
+      .then((body) => body.data)
+      .catch(toApiError),
+
+  /** POST /vehicle-claims/public/:token/verify → ticket (20 min) o manual_review. */
+  verifyClaim: (
+    token: string,
+    input: { licensePlate: string; vinLast4?: string; mileageRangeId?: string },
+  ) =>
+    api
+      .post(`vehicle-claims/public/${encodeURIComponent(token)}/verify`, {
+        json: input,
+      })
+      .json<{ data: VerifyClaimResult }>()
+      .then((body) => body.data)
+      .catch(toApiError),
+
+  /** POST /vehicle-claims/public/:token/commit → claimed o manual_review. */
+  commitClaim: (token: string, ticket: string) =>
+    api
+      .post(`vehicle-claims/public/${encodeURIComponent(token)}/commit`, {
+        json: { ticket },
+      })
+      .json<{ data: CommitClaimResult }>()
+      .then((body) => body.data)
+      .catch(toApiError),
+
+  /** POST /vehicle-claims → alta manual desde el panel (F-2). */
+  createClaim: (input: {
+    vehicleId: string;
+    careEpisodeId?: string;
+    ownerPhone?: string;
+  }) =>
+    api
+      .post("vehicle-claims", { json: input })
+      .json<{ data: WorkshopClaimCreateData }>()
+      .then((body) => body.data)
+      .catch(toApiError),
+
+  /** GET /vehicle-claims?page&limit&status → lista paginada (sin unwrap: trae `meta`). */
+  listClaims: (
+    params: { page?: number; limit?: number; status?: string } = {},
+  ) =>
+    api
+      .get("vehicle-claims", {
+        searchParams: {
+          page: params.page ?? 1,
+          limit: params.limit ?? 100,
+          ...(params.status ? { status: params.status } : {}),
+        },
+      })
+      .json<WorkshopClaimListResponse>()
+      .catch(toApiError),
+
+  /** GET /vehicle-claims/:id → detalle (+ claimant sólo con permiso review). */
+  getClaim: (id: string) =>
+    api
+      .get(`vehicle-claims/${encodeURIComponent(id)}`)
+      .json<{ data: WorkshopClaimDetail }>()
+      .then((body) => body.data)
+      .catch(toApiError),
+
+  /** POST /vehicle-claims/:id/approve → claimed (requiere claimant vinculado). */
+  approveClaim: (id: string) =>
+    api
+      .post(`vehicle-claims/${encodeURIComponent(id)}/approve`)
+      .json<{ data: WorkshopClaimReviewResult }>()
+      .then((body) => body.data)
+      .catch(toApiError),
+
+  /** POST /vehicle-claims/:id/reject → revoked (manual_review_rejected). */
+  rejectClaim: (id: string) =>
+    api
+      .post(`vehicle-claims/${encodeURIComponent(id)}/reject`)
+      .json<{ data: WorkshopClaimReviewResult }>()
+      .then((body) => body.data)
+      .catch(toApiError),
+
+  /** POST /vehicle-claims/:id/revoke → revoked (motivo libre opcional de UI). */
+  revokeClaim: (id: string, reason?: string) =>
+    api
+      .post(`vehicle-claims/${encodeURIComponent(id)}/revoke`, {
+        json: reason ? { reason } : {},
+      })
+      .json<{ data: WorkshopClaimRevokeResult }>()
+      .then((body) => body.data)
       .catch(toApiError),
 };
 
