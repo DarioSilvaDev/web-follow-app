@@ -2,7 +2,18 @@ import * as React from "react"
 import { Input as InputPrimitive } from "@base-ui/react/input"
 import { cn } from "cn"
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+/**
+ * `sanitize` filtra caracteres no válidos ANTES de que el consumidor
+ * (p. ej. react-hook-form) lea el valor: "digits" deja solo ASCII 0-9,
+ * para campos numéricos de texto libre (kilometraje, año, teléfono).
+ */
+function Input({ className, type, sanitize, onChange, ...props }: React.ComponentProps<"input"> & { sanitize?: "digits" }) {
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (sanitize === "digits") {
+      event.target.value = event.target.value.replace(/\D/g, "")
+    }
+    onChange?.(event)
+  }
   return (
     <InputPrimitive
       type={type}
@@ -12,6 +23,7 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
         className
       )}
       {...props}
+      onChange={handleChange}
     />
   )
 }

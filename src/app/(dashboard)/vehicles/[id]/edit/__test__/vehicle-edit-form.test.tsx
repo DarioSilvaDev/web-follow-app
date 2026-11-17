@@ -49,7 +49,22 @@ vi.mock("@/components/ui/button", () => ({
   ),
 }));
 vi.mock("@/components/ui/input", () => ({
-  Input: (props: React.ComponentProps<"input">) => <input {...props} />,
+  // Espejo del `sanitize` de la implementación real (ver components/ui/input).
+  Input: ({
+    sanitize,
+    onChange,
+    ...props
+  }: React.ComponentProps<"input"> & { sanitize?: "digits" }) => (
+    <input
+      {...props}
+      onChange={(event) => {
+        if (sanitize === "digits") {
+          event.target.value = event.target.value.replace(/\D/g, "");
+        }
+        onChange?.(event);
+      }}
+    />
+  ),
 }));
 vi.mock("@/components/ui/label", () => ({
   Label: ({ children, ...props }: React.ComponentProps<"label">) => (
