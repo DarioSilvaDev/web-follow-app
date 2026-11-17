@@ -22,8 +22,12 @@ import {
   Search,
   Store,
   Trash2,
-  Wrench,
 } from "lucide-react";
+import {
+  FormSection,
+  FormSectionAccordion,
+  type SectionStatus,
+} from "@/components/forms/form-section";
 import { BottomSheet, BottomSheetContent } from "@/components/ui/bottom-sheet";
 import { Button } from "@/components/ui/button";
 import {
@@ -147,6 +151,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
     handleSubmit,
     reset,
     setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<OwnerServiceFormValues>({
     resolver: zodResolver(ownerServiceSchema),
@@ -263,6 +268,35 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
   } | null>(null);
   const [confirmSubmitting, setConfirmSubmitting] = useState(false);
 
+  // ── Secciones del acordeón (mismo patrón que el check-in/alta) ──────────────
+  // Arrancan todas cerradas.
+  const [openSection, setOpenSection] = useState<string[]>([]);
+  /** Abre la sección indicada y cierra las demás (una sola abierta a la vez). */
+  const openSectionById = (id: string) => setOpenSection([id]);
+
+  const watchedTitle = watch("title") ?? "";
+  const watchedServiceDate = watch("serviceDate") ?? "";
+  const watchedWorkshopName = watch("workshopName") ?? "";
+
+  const servicioStatus: SectionStatus =
+    watchedTitle.trim() !== "" && watchedServiceDate.trim() !== ""
+      ? "complete"
+      : "incomplete";
+  const evidenciaStatus: SectionStatus =
+    evidenceFiles.length > 0 ? "complete" : "optional";
+  const tallerStatus: SectionStatus =
+    (workshopMode === "search"
+      ? selectedWorkshop !== null
+      : watchedWorkshopName.trim() !== ""
+    )
+      ? "complete"
+      : "incomplete";
+
+  const onInvalid = (formErrors: typeof errors) => {
+    const firstField = Object.keys(formErrors)[0];
+    openSectionById(firstField === "workshopName" ? "taller" : "servicio");
+  };
+
   const mapSubmitError = (error: unknown): string | null => {
     const apiError = error as { status?: number; message?: string };
     if (apiError.status === 400) {
@@ -355,6 +389,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
         setWorkshopError(
           "Buscá y seleccioná un taller, o elegí la opción \"Otro taller\".",
         );
+        openSectionById("taller");
         return;
       }
       workshopId = selectedWorkshop.id;
@@ -364,6 +399,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
         setWorkshopError(
           "Ingresá el nombre del taller, o buscá un taller en la app.",
         );
+        openSectionById("taller");
         return;
       }
       workshopName = name;
@@ -374,6 +410,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
       setWorkshopError(
         "Indicá un solo taller: seleccionado de la app o por texto libre.",
       );
+      openSectionById("taller");
       return;
     }
 
@@ -459,13 +496,27 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <Heading vehicleId={vehicleId} />
 
-      <Card>
-        <form onSubmit={handleSubmit(onSubmit)} noValidate>
-          <CardContent className="grid gap-4">
+      <form
+        onSubmit={handleSubmit(onSubmit, onInvalid)}
+        noValidate
+        className="grid gap-4 pb-2"
+      >
+          <FormSectionAccordion
+            value={openSection}
+            onValueChange={setOpenSection}
+          >
+            {/* Servicio — qué se hizo y cuándo */}
+            <FormSection
+              value="servicio"
+              title="Servicio"
+              status={servicioStatus}
+              description="Contá qué trabajo se hizo y en qué fecha."
+            >
             <div className="grid gap-2">
               <Label htmlFor="title">Título del servicio</Label>
               <Input
                 id="title"
+                className="bg-card"
                 placeholder="Ej. Cambio de aceite "
                 maxLength={120}
                 autoComplete="off"
@@ -483,6 +534,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
               <Label htmlFor="serviceDate">Fecha del servicio</Label>
               <Input
                 id="serviceDate"
+                className="bg-card"
                 type="date"
                 max={todayISOLocal()}
                 aria-invalid={!!errors.serviceDate}
@@ -503,7 +555,9 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
               <Label htmlFor="mileageIn">Kilometraje (opcional)</Label>
               <Input
                 id="mileageIn"
+                className="bg-card"
                 inputMode="numeric"
+                sanitize="digits"
                 placeholder="Ej. 18500"
                 maxLength={10}
                 autoComplete="off"
@@ -521,6 +575,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
               <Label htmlFor="notes">Notas (opcional)</Label>
               <Textarea
                 id="notes"
+                className="bg-card"
                 placeholder="Ej. Aceite 5W30, dos neumáticos delanteros..."
                 rows={3}
                 maxLength={1000}
@@ -537,17 +592,16 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                 </p>
               )}
             </div>
+            </FormSection>
 
             {/* Evidencia opcional (S6 — multipart en la creación) */}
-            <div className="grid gap-2 rounded-lg ring-1 ring-foreground/10 p-3">
-              <div>
-                <p className="text-sm font-medium">Evidencia (opcional)</p>
-                <p className="text-xs text-muted-foreground">
-                  Podés adjuntar hasta 5 fotos (JPG, PNG, WebP o AVIF, máx. 5MB
-                  c/u). Se guardarán como evidencia en el historial del
-                  vehículo.
-                </p>
-              </div>
+            <FormSection
+              value="evidencia"
+              title="Evidencia"
+              status={evidenciaStatus}
+              description="Fotos del trabajo (hasta 5: JPG, PNG, WebP o AVIF, máx. 5MB c/u). Se guardan como evidencia en el historial."
+            >
+            <div className="grid gap-2">
 
               {evidenceFiles.length > 0 ? (
                 <ul className="grid gap-1.5">
@@ -612,21 +666,15 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                 onChange={handleEvidenceFiles}
               />
             </div>
+            </FormSection>
 
             {/* Taller responsable (XOR D-066) */}
-            <div className="grid gap-3 rounded-xl ring-1 ring-foreground/10 p-3">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <Wrench className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">Taller responsable</p>
-                  <p className="text-xs text-muted-foreground">
-                    El taller que realizó el trabajo. Si está en Autentia,
-                    podrá verificarlo.
-                  </p>
-                </div>
-              </div>
+            <FormSection
+              value="taller"
+              title="Taller responsable"
+              status={tallerStatus}
+              description="El taller que realizó el trabajo. Si está en Autentia, podrá verificarlo."
+            >
 
               <div className="flex gap-2">
                 <Button
@@ -706,7 +754,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                           placeholder="Buscar taller por nombre..."
                           maxLength={50}
                           autoComplete="off"
-                          className="pl-9 pr-11"
+                          className="bg-card pl-9 pr-11"
                           value={searchQuery}
                           onChange={(event) => setSearchQuery(event.target.value)}
                         />
@@ -854,6 +902,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                   </Label>
                   <Input
                     id="workshopName"
+                    className="bg-card"
                     placeholder="Ej. Taller de la esquina"
                     maxLength={150}
                     autoComplete="off"
@@ -891,7 +940,8 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                   {workshopError}
                 </p>
               )}
-            </div>
+            </FormSection>
+          </FormSectionAccordion>
 
             {submitError && (
               <div className="grid gap-2" role="alert">
@@ -908,25 +958,22 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                 )}
               </div>
             )}
-          </CardContent>
-          <CardFooter>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Registrando...
-                </>
-              ) : (
-                "Registrar servicio"
-              )}
-            </Button>
-          </CardFooter>
-        </form>
-      </Card>
+
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Registrando...
+            </>
+          ) : (
+            "Registrar servicio"
+          )}
+        </Button>
+      </form>
 
       {/* Listado completo de talleres (bottom sheet). Vive fuera del
           <form> para no anidar botones dentro del form. */}
