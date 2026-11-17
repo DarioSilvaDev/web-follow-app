@@ -425,7 +425,7 @@ describe("Vehicle detail — Historial section (F-014)", () => {
     ).toBeInTheDocument();
   });
 
-  it("episodio de taller: 'Atención de taller', actor 'Taller {name}' y '(cancelada)' (D-071)", async () => {
+  it("episodio de taller: 'Atención de taller', actor 'Registrado por {snapshot}' y '(cancelada)' (D-071)", async () => {
     mockGetVehicleHistory.mockResolvedValue({
       transfers: [],
       mileages: [],
@@ -438,7 +438,7 @@ describe("Vehicle detail — Historial section (F-014)", () => {
     expect(
       await screen.findByText("Atención de taller (cancelada)"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Taller Libertad")).toBeInTheDocument();
+    expect(screen.getByText("Registrado por Libertad")).toBeInTheDocument();
     expect(screen.getByText("Presupuesto no aprobado")).toBeInTheDocument();
   });
 
@@ -456,10 +456,10 @@ describe("Vehicle detail — Historial section (F-014)", () => {
     renderPage();
 
     expect(
-      await screen.findByText("Taller Nombre En La Atencion"),
+      await screen.findByText("Registrado por Nombre En La Atencion"),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText("Taller Nombre Vigente Renombrado"),
+      screen.queryByText("Registrado por Nombre Vigente Renombrado"),
     ).not.toBeInTheDocument();
   });
 
@@ -507,11 +507,11 @@ describe("Vehicle detail — Historial section (F-014)", () => {
 
     renderPage();
 
+    // El contenido de la entrada sigue visible junto al link de destino.
     const link = await screen.findByRole("link", {
-      name: "Ver detalle de Cambio de aceite",
+      name: /^ver detalle$/i,
     });
     expect(link).toHaveAttribute("href", "/vehicles/v1/servicios/e1");
-    // El contenido de la entrada sigue visible dentro del link.
     expect(screen.getByText("Registrado por el propietario")).toBeInTheDocument();
     expect(screen.getByText("Pendiente de verificación")).toBeInTheDocument();
   });
@@ -527,9 +527,10 @@ describe("Vehicle detail — Historial section (F-014)", () => {
 
     expect(await screen.findByText("Transferencia completada")).toBeInTheDocument();
     expect(screen.getByText("Inicio de propiedad")).toBeInTheDocument();
-    // Ninguna entrada del historial es ancla: no hay hrefs a /servicios/.
+    // Ninguna entrada del historial lleva al detalle del servicio:
+    // no hay links /servicios/{id}.
     expect(
-      screen.queryByRole("link", { name: /ver detalle de/i }),
+      screen.queryByRole("link", { name: /ver detalle/i }),
     ).not.toBeInTheDocument();
     // Excluye el quick-action "Registrar servicio" (/servicios/nueva): solo
     // nos interesan deep-links a detalle /servicios/{id} del timeline.

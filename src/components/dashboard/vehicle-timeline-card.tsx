@@ -1,50 +1,27 @@
 "use client";
 
 /**
- * Últimos registros del historial del vehículo (timeline, orden desc).
+ * Últimos registros del historial del vehículo (dashboard).
  *
- * - Reutiliza `mergeHistory` (lógica F-014/D-052 existente) — NO se
- *   duplica la lógica de fusión de las 4 fuentes.
- * - El taller aparece como REGISTRANTE de la atención ("Registrado por
- *   {taller}"), nunca como propietario (regla de dominio HCDV).
- * - El km de cada atención sale del crudo de `careEpisodes` (mergeHistory no
- *   lo expone); la verificación también.
- * - Evidencias: el endpoint GET /:id/history NO expone adjuntos por
- *   episodio → no se muestran (no se inventan datos).
+ * Wrapper del dashboard alrededor del componente compartido `HistoryTimeline`
+ * (misma IA que el detalle del vehículo). Delega la fusión de las 4 fuentes en
+ * `mergeHistory` (F-014/D-052) y solo aporta el chrome de la tarjeta
+ * ("HISTORIA DEL VEHÍCULO / Últimos registros" + link a la historia completa).
  */
 
 import Link from "next/link";
 import {
-  ArrowLeftRight,
   ArrowRight,
   ClipboardList,
-  Gauge,
   Loader2,
   RotateCw,
-  User,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatDate, formatDateOnly } from "@/lib/format-date";
+import type { VehicleHistoryResponse } from "@/types/vehicle";
 import { mergeHistory } from "@/lib/vehicle-history";
-import type {
-  TimelineEntry,
-  TimelineEntryType,
-} from "@/lib/vehicle-history";
-import type {
-  VehicleCareEpisode,
-  VehicleHistoryResponse,
-} from "@/types/vehicle";
-
-const TYPE_ICONS: Record<TimelineEntryType, LucideIcon> = {
-  care: ClipboardList,
-  mileage: Gauge,
-  ownership: User,
-  transfer: ArrowLeftRight,
-};
+import { HistoryTimeline } from "@/components/vehicle/history-timeline";
 
 interface VehicleTimelineCardProps {
   vehicleId: string;
@@ -58,120 +35,6 @@ interface VehicleTimelineCardProps {
   limit?: number;
 }
 
-/** Metadatos crudos de una atención (km + verificación) por id. */
-function careIndex(
-  history?: VehicleHistoryResponse,
-): Map<string, VehicleCareEpisode> {
-  const map = new Map<string, VehicleCareEpisode>();
-  for (const episode of history?.careEpisodes ?? []) {
-    map.set(episode.id, episode);
-  }
-  return map;
-}
-
-function TimelineItem({
-  entry,
-  vehicleId,
-  care,
-}: {
-  entry: TimelineEntry;
-  vehicleId: string;
-  care?: VehicleCareEpisode;
-}) {
-  const Icon = TYPE_ICONS[entry.type];
-  const isCare = entry.type === "care" && Boolean(entry.careId);
-  const workshopName = care?.workshopName ?? care?.workshop?.name;
-  // Taller como REGISTRANTE (source=workshop) o VERIFICANTE (solo cuando
-  // verification=verified). Un episodio del dueño con nombre de taller
-  // pendiente de verificación NO es "Verificado por" (misma regla que
-  // traceability-summary-card). Rechazado cae a entry.actor — "Registrado
-  // por el propietario" (D-063); el rechazo lo muestra el badge de abajo.
-  const registrant =
-    care != null && workshopName
-      ? care.source === "workshop"
-        ? `Registrado por ${workshopName}`
-        : care.verification === "verified"
-          ? `Verificado por ${workshopName}`
-          : entry.actor
-      : entry.actor;
-
-  return (
-    <li className="relative flex gap-3 pb-4 last:pb-0">
-      {/* Rail vertical entre items */}
-      <span
-        aria-hidden="true"
-        className="absolute left-[15px] top-9 h-[calc(100%-1.5rem)] w-0.5 bg-border last:hidden"
-      />
-      <span
-        aria-hidden="true"
-        className="relative z-[1] flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-background"
-      >
-        <Icon className="h-[18px] w-[18px] text-primary" />
-      </span>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <p className="min-w-0 text-sm font-medium leading-snug">
-            {entry.title}
-          </p>
-          <time
-            dateTime={entry.date}
-            className="shrink-0 text-xs text-muted-foreground"
-          >
-            {/* Plan 05 / F-TZ-8: la tarjeta NUNCA muestra hora. `date` →
-                calendario en UTC; `instant` → el mismo `formatDate` de antes
-                (no se unifica con el historial: son lenguajes distintos). */}
-            {entry.dateKind === "date"
-              ? formatDateOnly(entry.dateOnly)
-              : formatDate(entry.date)}
-          </time>
-        </div>
-
-        {registrant && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{registrant}</p>
-        )}
-
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          {care?.mileageIn != null && (
-            <span className="font-mono text-xs text-muted-foreground">
-              {care.mileageIn.toLocaleString("es-AR")} km
-            </span>
-          )}
-          {care && (
-            <Badge
-              variant={
-                care.verification === "verified"
-                  ? "success"
-                  : care.verification === "rejected"
-                    ? "destructive"
-                    : "warning"
-              }
-              className="text-xs"
-            >
-              {care.verification === "verified"
-                ? "Verificado"
-                : care.verification === "rejected"
-                  ? workshopName
-                    ? `Rechazado por ${workshopName}`
-                    : "Rechazado por el taller responsable"
-                  : "Pendiente de verificación"}
-            </Badge>
-          )}
-          {isCare && entry.careId && (
-            <Link
-              href={`/vehicles/${vehicleId}/servicios/${entry.careId}`}
-              className="inline-flex min-h-9 items-center gap-1 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Ver detalle
-              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </Link>
-          )}
-        </div>
-      </div>
-    </li>
-  );
-}
-
 export function VehicleTimelineCard({
   vehicleId,
   historyStatus,
@@ -181,10 +44,8 @@ export function VehicleTimelineCard({
   limit = 5,
 }: VehicleTimelineCardProps) {
   const entries =
-    historyStatus === "success" && history
-      ? mergeHistory(history).slice(0, limit)
-      : [];
-  const cares = careIndex(history);
+    historyStatus === "success" && history ? history : undefined;
+  const entryCount = entries ? mergeHistory(entries).length : 0;
 
   return (
     <Card>
@@ -235,7 +96,7 @@ export function VehicleTimelineCard({
               Reintentar
             </Button>
           </div>
-        ) : entries.length === 0 ? (
+        ) : !entries || entryCount === 0 ? (
           <EmptyState
             icon={ClipboardList}
             title="Todavía no hay atenciones registradas"
@@ -253,16 +114,13 @@ export function VehicleTimelineCard({
             className="py-8"
           />
         ) : (
-          <ol className="flex flex-col">
-            {entries.map((entry) => (
-              <TimelineItem
-                key={entry.id}
-                entry={entry}
-                vehicleId={vehicleId}
-                care={entry.careId ? cares.get(entry.careId) : undefined}
-              />
-            ))}
-          </ol>
+          // entries está definido (se verificó arriba); TS no lo estrecha
+          // dentro del ternario de JSX.
+          <HistoryTimeline
+            history={entries}
+            vehicleId={vehicleId}
+            limit={limit}
+          />
         )}
       </CardContent>
     </Card>
