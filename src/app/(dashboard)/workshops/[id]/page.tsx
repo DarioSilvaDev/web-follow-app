@@ -15,9 +15,11 @@
  * de UX `canInWorkshop` y reacciona igual al 403 real (PROD-003 / FR-004).
  *
  * El header también expone los CTAs de atenciones (`/atenciones/nueva`,
- * `/atenciones` y `/atenciones/verificaciones`): sin ellos la página era un
- * callejón sin salida hacia la operación diaria del taller (F-023: las
- * atenciones no son items de nav).
+ * `/atenciones`, `/atenciones/verificaciones` y `/reclamos`): sin ellos la
+ * página era un callejón sin salida hacia la operación diaria del taller
+ * (F-023: las atenciones no son items de nav; F-2: reclamos tampoco). El
+ * hook de ruta fija el contexto WORKSHOP a este taller, así `/reclamos`
+ * lista los reclamos del taller mostrado acá.
  *
  * Espejo de `/dealerships/[id]`, que ya establece el patrón del repo.
  */
@@ -25,7 +27,14 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ClipboardCheck, FileText, RefreshCw, Store, Wrench } from "lucide-react";
+import {
+  ClipboardCheck,
+  FileText,
+  Link2,
+  RefreshCw,
+  Store,
+  Wrench,
+} from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -55,7 +64,7 @@ export default function WorkshopDetailPage() {
   const isNotFound = status === 404;
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4">
       {workshopQuery.isLoading && (
         <Card>
           <CardContent className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
@@ -110,7 +119,9 @@ export default function WorkshopDetailPage() {
                     <Store className="h-5 w-5" />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <h1 className={`font-heading font-semibold tracking-tight ${typeScale.display}`}>
+                    <h1
+                      className={`font-heading font-semibold tracking-tight ${typeScale.display}`}
+                    >
                       {workshop.name}
                     </h1>
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
@@ -144,6 +155,15 @@ export default function WorkshopDetailPage() {
                     <Button variant="outline" className="min-h-11">
                       <ClipboardCheck className="mr-1.5" aria-hidden="true" />
                       Verificaciones
+                    </Button>
+                  </Link>
+                  {/* F-2: mismo patrón que los CTAs de atenciones — sin gate
+                      en el botón; `/reclamos` maneja su propio permiso
+                      (`vehicle-claim.list`). */}
+                  <Link href="/reclamos">
+                    <Button variant="outline" className="min-h-11">
+                      <Link2 className="mr-1.5" aria-hidden="true" />
+                      Reclamos
                     </Button>
                   </Link>
                 </div>

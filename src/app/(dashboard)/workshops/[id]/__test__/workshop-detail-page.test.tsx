@@ -6,7 +6,8 @@
  * invalidación del check-in) vive en
  * `src/components/workshop/__test__/workshop-specialties-section.test.tsx`;
  * acá se cubre que la pestaña exista, que la sección se monte al abrirla y
- * que lea `GET /workshops/:id/specialties`.
+ * que lea `GET /workshops/:id/specialties`. También se verifica que el
+ * header exponga los CTAs operativos (incl. `/reclamos`, F-2).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -124,6 +125,28 @@ function renderPage() {
 beforeEach(() => {
   vi.resetAllMocks();
   mockUser = makeUser(["workshop.specialties.manage"]);
+});
+
+describe("WorkshopDetailPage — CTAs del header", () => {
+  it("expone los CTAs operativos, incl. Reclamos (F-2)", async () => {
+    mockGetWorkshop.mockResolvedValue(workshop);
+    mockListSpecialties.mockResolvedValue([]);
+    renderPage();
+
+    expect(
+      await screen.findByRole("link", { name: "Registrar servicio" }),
+    ).toHaveAttribute("href", "/atenciones/nueva");
+    expect(
+      screen.getByRole("link", { name: "Ver atenciones" }),
+    ).toHaveAttribute("href", "/atenciones");
+    expect(
+      screen.getByRole("link", { name: "Verificaciones" }),
+    ).toHaveAttribute("href", "/atenciones/verificaciones");
+    expect(screen.getByRole("link", { name: "Reclamos" })).toHaveAttribute(
+      "href",
+      "/reclamos",
+    );
+  });
 });
 
 describe("WorkshopDetailPage — pestaña Especialidades", () => {
