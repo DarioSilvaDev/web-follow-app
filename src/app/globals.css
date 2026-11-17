@@ -75,9 +75,12 @@
     0 1px 2px oklch(0.16 0.01 260 / 4%), 0 1px 3px oklch(0.16 0.01 260 / 6%);
 
   /* ── Design System Autentia · espaciado ──
-     Base 16px: pantalla, padding de tarjeta, separación entre tarjetas y
-     entre campos. 6px entre etiqueta y valor. 24px entre secciones. */
-  --spacing-screen: 1rem;
+     Base 16px: página, padding de tarjeta, separación entre tarjetas y
+     entre campos. 6px entre etiqueta y valor. 24px entre secciones.
+     OJO: `screen` es un sufijo reservado de Tailwind v4 (min-h-screen =
+     100vh); redefinir `--spacing-screen` rompía esas utilidades. Por eso
+     el token "pantalla" se expone como `page` (`p-page`). */
+  --spacing-page: 1rem;
   --spacing-card: 1rem;
   --spacing-card-gap: 1rem;
   --spacing-field: 1rem;
