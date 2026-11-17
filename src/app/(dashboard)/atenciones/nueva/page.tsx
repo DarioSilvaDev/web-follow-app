@@ -13,8 +13,6 @@ import {
   CarFront,
   Check,
   CheckCircle2,
-  ChevronDown,
-  CircleCheck,
   Eye,
   Gauge,
   ImagePlus,
@@ -22,7 +20,6 @@ import {
   Loader2,
   Search,
   Smartphone,
-  TriangleAlert,
 } from "lucide-react";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
@@ -30,12 +27,10 @@ import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import {
-  Accordion,
-  AccordionHeader,
-  AccordionItem,
-  AccordionPanel,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+  FormSection,
+  FormSectionAccordion,
+  type SectionStatus,
+} from "@/components/forms/form-section";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -89,13 +84,6 @@ const MAX_SERVICE_TYPES = 3;
 /** Secciones del formulario (navegación entre tabs; no implican progreso). */
 type SectionId = "datos" | "tipo" | "observaciones" | "contacto";
 
-const SECTION_TITLES: Record<SectionId, string> = {
-  datos: "Datos de ingreso",
-  tipo: "Tipo de servicio",
-  observaciones: "Observaciones",
-  contacto: "Contacto",
-};
-
 /** Descripción corta de cada sección (texto de apoyo dentro del panel). */
 const SECTION_DESCRIPTIONS: Record<SectionId, string> = {
   datos: "Sucursal, odómetro y datos del vehículo",
@@ -104,90 +92,9 @@ const SECTION_DESCRIPTIONS: Record<SectionId, string> = {
   contacto: "Celular del propietario o «No disponible»",
 };
 
-/**
- * Cada sección es una tarjeta independiente: el `Accordion` root solo aporta
- * layout (`grid gap-3`). Cerrada = superficie `card` (blanco); abierta = la
- * tarjeta entera se tiñe de `secondary` (celeste), contrastando con las
- * cerradas y con los controles blancos del cuerpo (inputs, chips, fieldsets).
- */
-const SECTION_ITEM_CLASS = cn(
-  "min-w-0 overflow-hidden rounded-card border border-border bg-card shadow-card",
-  "transition-colors duration-normal",
-  "hover:border-primary/20",
-  "data-[open]:border-primary/25 data-[open]:bg-secondary",
-);
-
-/**
- * Cuerpo abierto: transparente (deja ver el tinte `secondary` de la tarjeta)
- * con un divisor teñido de `primary`. El contraste de fondos es parte del
- * diseño: los controles del cuerpo son superficies blancas sobre el celeste.
- */
-const SECTION_PANEL_CLASS = "border-primary/15 bg-transparent";
-
-/**
- * Encabezado de sección (trigger del accordion):
- * - Círculo de estado: ámbar (`warning`) si está incompleta, verde
- *   (`success`) si está completa. El estado no depende solo del color: el
- *   texto de abajo lo comunica.
- * - Título en semibold y, debajo, el estado de la sección
- *   ("Incompleta"/"Completa").
- * - Chevron a la derecha que rota cuando el panel está abierto.
- */
-function SectionTriggerButton({
-  id,
-  complete,
-}: {
-  id: SectionId;
-  complete: boolean;
-}) {
-  return (
-    <AccordionHeader>
-      <AccordionTrigger
-        className={cn(
-          "items-center gap-3 px-4 py-3.5 duration-normal",
-          // Cerrada (blanca): hover apenas teñido. Abierta: transparente,
-          // rige el tinte `secondary` de la tarjeta completa.
-          "hover:bg-muted/50",
-          "data-[panel-open]:bg-transparent data-[panel-open]:hover:bg-transparent",
-        )}
-      >
-        <span
-          className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-full",
-            "transition-colors duration-normal",
-            complete
-              ? "bg-success/15 text-success"
-              : "bg-warning/15 text-warning",
-          )}
-          aria-hidden="true"
-        >
-          {complete ? (
-            <CircleCheck className="size-5" strokeWidth={2.1} />
-          ) : (
-            <TriangleAlert className="size-5" strokeWidth={2.1} />
-          )}
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-sm font-semibold leading-snug text-foreground">
-            {SECTION_TITLES[id]}
-          </span>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 text-xs font-medium",
-              complete ? "text-success" : "text-muted-foreground",
-            )}
-          >
-            {complete ? "Completa" : "Incompleta"}
-          </span>
-        </span>
-        <ChevronDown
-          aria-hidden="true"
-          className="ml-auto size-[18px] shrink-0 text-muted-foreground transition-transform duration-normal group-data-[panel-open]:rotate-180"
-        />
-      </AccordionTrigger>
-    </AccordionHeader>
-  );
-}
+/** Secciones abiertas/cerradas y estado visual: ver `FormSection`. */
+const toStatus = (complete: boolean): SectionStatus =>
+  complete ? "complete" : "incomplete";
 
 const SECTION_FOR_FIELD: Partial<Record<keyof CheckInFormValues, SectionId>> = {
   branchId: "datos",
@@ -853,6 +760,7 @@ function OwnerPhoneFields({ form, unavailable }: OwnerPhoneFieldsProps) {
           <Input
             id="check-in-phone-area"
             inputMode="numeric"
+            sanitize="digits"
             placeholder="Ej. 11"
             autoComplete="off"
             maxLength={6}
@@ -866,6 +774,7 @@ function OwnerPhoneFields({ form, unavailable }: OwnerPhoneFieldsProps) {
           <Input
             id="check-in-phone-number"
             inputMode="numeric"
+            sanitize="digits"
             placeholder="Ej. 55551234"
             autoComplete="off"
             maxLength={12}
@@ -1084,7 +993,7 @@ export default function NewCareEpisodePage() {
   const customerComplaint = watch("customerComplaint");
 
   // ── Navegación entre secciones (solo una abierta a la vez) ──
-  const [openSection, setOpenSection] = useState<string[]>(["datos"]);
+  const [openSection, setOpenSection] = useState<string[]>([]);
   const mileageOk = mileageInUnreadable
     ? mileageInUnreadableReason.trim().length >= 3
     : (() => {
@@ -1575,21 +1484,17 @@ export default function NewCareEpisodePage() {
                 </div>
               </div>
 
-              <Accordion
+              <FormSectionAccordion
                 value={openSection}
                 onValueChange={setOpenSection}
-                className="grid gap-3"
               >
                 {/* Grupo 1 — Datos de ingreso (vehículo + odómetro) */}
-                <AccordionItem value="datos" className={SECTION_ITEM_CLASS}>
-                  <SectionTriggerButton
-                    id="datos"
-                    complete={sectionStatus.datos}
-                  />
-                  <AccordionPanel className={SECTION_PANEL_CLASS}>
-                    <p className="text-sm text-muted-foreground">
-                      {SECTION_DESCRIPTIONS.datos}
-                    </p>
+                <FormSection
+                  value="datos"
+                  title="Datos de ingreso"
+                  status={toStatus(sectionStatus.datos)}
+                  description={SECTION_DESCRIPTIONS.datos}
+                >
                     <div className="grid gap-2">
                       <Label htmlFor="branchId">Sucursal</Label>
                       <Select
@@ -1668,6 +1573,7 @@ export default function NewCareEpisodePage() {
                         <Input
                           id="mileageIn"
                           inputMode="numeric"
+                          sanitize="digits"
                           placeholder="Ej. 45000"
                           maxLength={10}
                           autoComplete="off"
@@ -1716,16 +1622,14 @@ export default function NewCareEpisodePage() {
                         </div>
                       )}
                     </fieldset>
-                  </AccordionPanel>
-                </AccordionItem>
+                </FormSection>
 
                 {/* Grupo 2 — Tipo de servicio */}
-                <AccordionItem value="tipo" className={SECTION_ITEM_CLASS}>
-                  <SectionTriggerButton
-                    id="tipo"
-                    complete={sectionStatus.tipo}
-                  />
-                  <AccordionPanel className={SECTION_PANEL_CLASS}>
+                <FormSection
+                  value="tipo"
+                  title="Tipo de servicio"
+                  status={toStatus(sectionStatus.tipo)}
+                >
                     <ServiceTypesSection
                       workshopId={workshopId}
                       serviceTypes={serviceTypesQuery.data?.data}
@@ -1750,22 +1654,15 @@ export default function NewCareEpisodePage() {
                       customLabelError={errors.customServiceLabel?.message}
                       disabled={isSubmitting}
                     />
-                  </AccordionPanel>
-                </AccordionItem>
+                </FormSection>
 
                 {/* Grupo 3 — Observaciones (cliente + taller) */}
-                <AccordionItem
+                <FormSection
                   value="observaciones"
-                  className={SECTION_ITEM_CLASS}
+                  title="Observaciones"
+                  status={toStatus(sectionStatus.observaciones)}
+                  description={SECTION_DESCRIPTIONS.observaciones}
                 >
-                  <SectionTriggerButton
-                    id="observaciones"
-                    complete={sectionStatus.observaciones}
-                  />
-                  <AccordionPanel className={SECTION_PANEL_CLASS}>
-                    <p className="text-sm text-muted-foreground">
-                      {SECTION_DESCRIPTIONS.observaciones}
-                    </p>
                     <div className="grid gap-2">
                       <Label htmlFor="customerComplaint">
                         Motivo / queja del cliente
@@ -1832,26 +1729,21 @@ export default function NewCareEpisodePage() {
                         <FieldError>{errors.internalNotes.message}</FieldError>
                       )}
                     </div>
-                  </AccordionPanel>
-                </AccordionItem>
+                </FormSection>
 
                 {/* Grupo 4 — Contacto (propietario) */}
-                <AccordionItem value="contacto" className={SECTION_ITEM_CLASS}>
-                  <SectionTriggerButton
-                    id="contacto"
-                    complete={sectionStatus.contacto}
-                  />
-                  <AccordionPanel className={SECTION_PANEL_CLASS}>
-                    <p className="text-sm text-muted-foreground">
-                      {SECTION_DESCRIPTIONS.contacto}
-                    </p>
+                <FormSection
+                  value="contacto"
+                  title="Contacto"
+                  status={toStatus(sectionStatus.contacto)}
+                  description={SECTION_DESCRIPTIONS.contacto}
+                >
                     <OwnerPhoneFields
                       form={form}
                       unavailable={phoneUnavailable}
                     />
-                  </AccordionPanel>
-                </AccordionItem>
-              </Accordion>
+                </FormSection>
+              </FormSectionAccordion>
 
               {submitError && (
                 <Callout variant="destructive" role="alert">

@@ -109,7 +109,22 @@ vi.mock("@/components/ui/card", () => ({
   ),
 }));
 vi.mock("@/components/ui/input", () => ({
-  Input: (props: React.ComponentProps<"input">) => <input {...props} />,
+  // Espejo del `sanitize` de la implementación real (ver components/ui/input).
+  Input: ({
+    sanitize,
+    onChange,
+    ...props
+  }: React.ComponentProps<"input"> & { sanitize?: "digits" }) => (
+    <input
+      {...props}
+      onChange={(event) => {
+        if (sanitize === "digits") {
+          event.target.value = event.target.value.replace(/\D/g, "");
+        }
+        onChange?.(event);
+      }}
+    />
+  ),
 }));
 vi.mock("@/components/ui/label", () => ({
   Label: (props: React.ComponentProps<"label">) => <label {...props} />,
@@ -273,6 +288,11 @@ async function searchPlate(user: User, plate: string) {
   await user.click(screen.getByRole("button", { name: /buscar/i }));
 }
 
+/** Click en el trigger de una sección (abre/cierra). */
+async function toggleSection(user: User, name: RegExp) {
+  await user.click(screen.getByRole("button", { name }));
+}
+
 /** Lookup encontrado → confirmar card y esperar a que carguen sucursales. */
 async function continueWithFoundVehicle(user: User, plate = "ABC123") {
   mockLookup.mockResolvedValue(makeVehicle(plate));
@@ -281,6 +301,9 @@ async function continueWithFoundVehicle(user: User, plate = "ABC123") {
   await user.click(
     screen.getByRole("button", { name: /continuar con el check-in/i }),
   );
+  // Las secciones arrancan cerradas: abrir "Datos de ingreso" para ver la
+  // sucursal y los campos del vehículo.
+  await toggleSection(user, /^datos de ingreso/i);
   await screen.findByRole("option", { name: /Sucursal Norte/ });
 }
 
@@ -346,6 +369,7 @@ describe("Nueva atención page — check-in unificado (B-2)", () => {
     await user.click(
       screen.getByRole("button", { name: /continuar con el check-in/i }),
     );
+    await toggleSection(user, /^datos de ingreso/i);
     await screen.findByRole("option", { name: /Sucursal Norte/ });
 
     await user.type(screen.getByLabelText(/kilometraje/i), "50000");
@@ -420,6 +444,9 @@ describe("Nueva atención page — check-in unificado (B-2)", () => {
         "No encontramos la patente XYZ999. Lo registramos como vehículo nuevo.",
       ),
     ).toBeInTheDocument();
+
+    // Secciones arrancan cerradas: abrir "Datos de ingreso".
+    await toggleSection(user, /^datos de ingreso/i);
 
     // Patente pre-cargada y read-only.
     const plateField = screen.getByTestId("check-in-plate");
@@ -549,6 +576,7 @@ describe("Nueva atención page — check-in unificado (B-2)", () => {
 
     renderPage();
     await searchPlate(user, "XYZ999");
+    await toggleSection(user, /^datos de ingreso/i);
     await screen.findByRole("option", { name: /Sucursal Norte/ });
 
     await user.type(screen.getByLabelText(/kilometraje/i), "30000");
@@ -572,6 +600,7 @@ describe("Nueva atención page — check-in unificado (B-2)", () => {
 
     renderPage();
     await searchPlate(user, "XYZ999");
+    await toggleSection(user, /^datos de ingreso/i);
     await screen.findByRole("option", { name: /Sucursal Norte/ });
 
     await user.type(screen.getByLabelText(/kilometraje/i), "30000");
