@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  ArrowRight,
   CheckCircle2,
   Loader2,
   RotateCw,
   ShieldCheck,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,48 +26,47 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useActiveContext } from "@/hooks/use-active-context";
 import { useAuth } from "@/hooks/use-auth";
 import { careEpisodeApi } from "@/lib/api";
+import { formatDateOnly } from "@/lib/format-date";
+import { vehicleKeys } from "@/lib/query-keys";
 import type { CareEpisodeVerificationItem } from "@/types/care-episode";
 
 // ---------------------------------------------------------------------------
 // Iteración 2-2 / RF-8 — "Verificaciones" (taller, contexto WORKSHOP).
 // Journey: el taller ve la cola de episodios `source='owner'` + `unverified`
-// de SU taller (GET /care-episodes/verifications, RF-4) y confirma el trabajo
-// (POST /care-episodes/:id/verify, RF-5).
+// de SU taller (GET /care-episodes/verifications, RF-4), confirma el trabajo
+// (POST /care-episodes/:id/verify, RF-5) o lo RECHAZA (POST
+// /care-episodes/:id/reject, diseño aprobado de rechazo de verificación) y
+// puede entrar al detalle de la atención (`/vehicles/:id/servicios/:id`,
+// `vehicleId` viene en la cola).
 //
 // WORKSHOP-only: sin taller seleccionado la página solo orienta (el backend
 // responde 403 en PERSONAL — WorkshopOnly).
 //
-// La confirmación es destructiva y auditada (queda en la historia del
-// vehículo), así que se hace con un diálogo del design system en lugar de
-// `window.confirm` (consistente en todas las plataformas, accesible y
-// estilado).
+// La confirmación y el rechazo son destructivos y auditados (quedan en la
+// historia del vehículo), así que se hacen con un diálogo del design system
+// en lugar de `window.confirm` (consistente en todas las plataformas,
+// accesible y estilado). El rechazo admite un motivo opcional (≤500).
 // ---------------------------------------------------------------------------
 
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 function vehicleSummary(item: CareEpisodeVerificationItem): string {
-  const catalog = [item.vehicle.brand, item.vehicle.model, item.vehicle.version]
+  // MVP sin versiones: marca + modelo (la `version` legacy no se muestra).
+  const catalog = [item.vehicle.brand, item.vehicle.model]
     .filter(Boolean)
     .join(" ");
   const year = item.vehicle.manufactureYear ?? null;
   return [catalog, year].filter(Boolean).join(" · ") || "Sin datos de catálogo";
 }
 
-/** Estado transicional del item: pending → verified → error (mensaje). */
+/** Estado transicional del item: pending → verified | rejected → error (mensaje). */
 type ItemState =
   | { status: "pending" }
   | { status: "verified" }
+  | { status: "rejected" }
   | { status: "error"; message: string };
 
 export default function VerificationsPage() {
@@ -74,6 +75,7 @@ export default function VerificationsPage() {
     activeContext?.type === "WORKSHOP" ? activeContext.workshopId : null;
   const { status, user } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const workshopName = user?.workshopMemberships.find(
     (membership) => membership.workshopId === workshopId,
@@ -109,8 +111,16 @@ export default function VerificationsPage() {
     useState<CareEpisodeVerificationItem | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
 
-  const isVerified = (itemId: string) =>
-    itemStates[itemId]?.status === "verified";
+  // Ítem elegido para RECHAZAR (dialog abierto) + motivo opcional (≤500).
+  const [pendingRejectItem, setPendingRejectItem] =
+    useState<CareEpisodeVerificationItem | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [isRejecting, setIsRejecting] = useState(false);
+
+  const closeRejectDialog = () => {
+    setPendingRejectItem(null);
+    setRejectReason("");
+  };
 
   const executeVerify = async (item: CareEpisodeVerificationItem) => {
     setIsVerifying(true);
@@ -137,6 +147,54 @@ export default function VerificationsPage() {
       // Cierra el dialog en éxito y en error: el resultado se lee en la card
       // (verificado o mensaje de error), no dentro del diálogo.
       setPendingItem(null);
+    }
+  };
+
+  /**
+   * Rechazo de verificación (diseño aprobado): POST /care-episodes/:id/reject
+   * con motivo opcional. Mapeo de errores 403/404/409 por item, mismo patrón
+   * que `executeVerify`: el resultado se lee en la card, no en el diálogo.
+   */
+  const executeReject = async (item: CareEpisodeVerificationItem) => {
+    setIsRejecting(true);
+    try {
+      const reason = rejectReason.trim();
+      await careEpisodeApi.rejectCareEpisode(item.id, reason || undefined);
+      setItemStates((prev) => ({ ...prev, [item.id]: { status: "rejected" } }));
+      // Invalidaciones (best-effort con allSettled: un fallo de refetch NO
+      // convierte un rechazo exitoso en error). Cola (el item sale en el
+      // próximo GET), listado de atenciones, detalle del episodio y
+      // historial del vehículo — las superficies del propietario que
+      // muestran el estado de verificación.
+      await Promise.allSettled([
+        queryClient.invalidateQueries({
+          queryKey: ["care-episode-verifications"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["care-episode-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["care-episode"] }),
+        queryClient.invalidateQueries({
+          queryKey: [...vehicleKeys.detail(item.vehicleId), "history"],
+        }),
+      ]);
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      let message = "No se pudo rechazar el episodio. Intentalo nuevamente.";
+      if (status === 403) {
+        message =
+          "Este episodio no puede rechazarse: no tenés permisos o es un episodio de taller.";
+      } else if (status === 404) {
+        message = "El episodio ya no está disponible para tu taller.";
+      } else if (status === 409) {
+        message = "Este episodio ya fue resuelto y no se puede rechazar.";
+      }
+      setItemStates((prev) => ({
+        ...prev,
+        [item.id]: { status: "error", message },
+      }));
+    } finally {
+      setIsRejecting(false);
+      // Mismo criterio que verify: el diálogo se cierra en éxito y en error.
+      closeRejectDialog();
     }
   };
 
@@ -210,13 +268,20 @@ export default function VerificationsPage() {
                   <CardContent className="grid gap-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-semibold">{item.title}</p>
-                      {isVerified(item.id) ? (
+                      {state.status === "verified" ? (
                         <Badge
                           variant="success"
                           data-testid={`verified-${item.id}`}
                         >
                           <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
                           Verificado por {workshopName ?? "este taller"}
+                        </Badge>
+                      ) : state.status === "rejected" ? (
+                        <Badge
+                          variant="destructive"
+                          data-testid={`rejected-${item.id}`}
+                        >
+                          Rechazado
                         </Badge>
                       ) : (
                         <Badge variant="warning">
@@ -227,7 +292,7 @@ export default function VerificationsPage() {
 
                     <div className="grid gap-1 text-sm">
                       <p className="text-muted-foreground">
-                        {formatDate(item.serviceDate)}
+                        {formatDateOnly(item.serviceDate)}
                         {item.mileageIn != null
                           ? ` · ${item.mileageIn.toLocaleString("es-AR")} km`
                           : ""}
@@ -254,16 +319,37 @@ export default function VerificationsPage() {
                       </p>
                     )}
 
-                    {!isVerified(item.id) && (
-                      <div>
-                        <Button
-                          size="sm"
-                          onClick={() => setPendingItem(item)}
-                        >
-                          Confirmar
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      {state.status !== "verified" &&
+                        state.status !== "rejected" && (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => setPendingItem(item)}
+                            >
+                              Confirmar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setRejectReason("");
+                                setPendingRejectItem(item);
+                              }}
+                            >
+                              Rechazar
+                            </Button>
+                          </>
+                        )}
+                      <Link
+                        href={`/vehicles/${item.vehicleId}/servicios/${item.id}`}
+                        aria-label={`Ver detalle de ${item.title}`}
+                        className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-primary transition-colors outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+                      >
+                        Ver detalle
+                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Link>
+                    </div>
                   </CardContent>
                 </Card>
               </li>
@@ -305,6 +391,56 @@ export default function VerificationsPage() {
                   <CheckCircle2 className="h-4 w-4" />
                 )}
                 Sí, confirmar
+              </Button>
+            </div>
+          </DialogPopup>
+        ) : null}
+      </Dialog>
+
+      {/* Dialog de rechazo (diseño aprobado — motivo opcional, sin toasts). */}
+      <Dialog
+        open={pendingRejectItem !== null}
+        onOpenChange={(open) => {
+          if (!open && !isRejecting) closeRejectDialog();
+        }}
+      >
+        {pendingRejectItem ? (
+          <DialogPopup className="sm:max-w-md">
+            <DialogTitle>Rechazar registro</DialogTitle>
+            <DialogDescription>
+              Vas a indicar que {workshopName ?? "tu taller"} no realizó «
+              {pendingRejectItem.title}». Esta acción queda registrada en la
+              historia del vehículo y no se puede deshacer.
+            </DialogDescription>
+            <div className="grid gap-2">
+              <Label htmlFor="rejection-reason">Motivo (opcional)</Label>
+              <Textarea
+                id="rejection-reason"
+                maxLength={500}
+                placeholder="Ej.: no consta en nuestros registros"
+                value={rejectReason}
+                onChange={(event) => setRejectReason(event.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                disabled={isRejecting}
+                onClick={closeRejectDialog}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={isRejecting}
+                onClick={() => void executeReject(pendingRejectItem)}
+              >
+                {isRejecting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <X className="h-4 w-4" />
+                )}
+                Sí, rechazar
               </Button>
             </div>
           </DialogPopup>

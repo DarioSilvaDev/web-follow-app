@@ -92,6 +92,13 @@ Cuando el código contradiga una decisión aceptada, debe considerarse legacy, b
 | PROD-013 | Membresía de concesionaria en contexto PERSONAL no habilita la vía; se informa    | `ACCEPTED` |
 | PROD-014 | El selector de contexto del header se acepta como transitorio                    | `ACCEPTED` |
 
+### Producto — Alta de vehículos
+
+| ID      | Decisión                                                                              | Estado    |
+| ------- | -------------------------------------------------------------------------------------- | --------- |
+| PROD-015 | El alta PERSONAL muestra "Kilometraje actual" como campo **opcional**                  | `ACCEPTED` |
+| PROD-016 | En DEALERSHIP el campo sigue siendo "Kilometraje inicial" y **obligatorio**             | `ACCEPTED` |
+
 ### Arquitectura frontend
 
 | ID     | Decisión                                                                                  | Estado    |
@@ -275,6 +282,23 @@ Impacto funcional del vacío: `/atenciones/nueva` deshabilita el submit cuando `
 **Decisión.** El selector de contexto del header es un `<select>` nativo con estilos ad-hoc y sin indicación de contexto activo en el resto de la aplicación. Se acepta como **deuda UX tolerable en MVP**, condicionada a que PROD-013 proportionally una orientación clara al cambiar de contexto.
 
 **Deuda registrada.** Indicador de contexto activo en el body + migrar los selectores al componente `Select` del design system.
+
+---
+
+### PROD-015 / PROD-016 — Kilometraje en el alta de vehículo
+
+**Estado:** `ACCEPTED` (2026-11-15)
+
+**Decisión.**
+
+- **PERSONAL (PROD-015).** `/vehicles/new` muestra **"Kilometraje actual (opcional)"**. El usuario está dando de alta **su propio** vehículo y conoce (o puede consultar en el tablero) el odómetro; pedirlo en el momento de mayor intención es la única oportunidad gratis de arrancar la historia con una lectura real. Si lo deja vacío, el alta sigue funcionando igual y el dato puede cargarse después desde el detalle.
+- **DEALERSHIP (PROD-016).** Sin cambios: **"Kilometraje inicial"**, obligatorio (alta de 0 km, D-148 del registro de backend).
+
+Ambos contextos envían el mismo campo de contrato, `initialMileage`; el **copy y la obligatoriedad** son lo que cambia. Al persistirse, el backend lo guarda como la **primera lectura del odómetro** con `source=owner` (PERSONAL) o `source=dealership` (DEALERSHIP) y su registro de auditoría — es decir, el dato aparece en el historial del vehículo, no como un atributo suelto.
+
+**Qué NO se hizo.** El campo no es obligatorio en PERSONAL: exigirlo en el alta mataría conversión (muchos usuarios no recuerdan el número exacto) y contradice el principio de que el producto registra **lecturas con atribución**, no números perfectos.
+
+**Referencias.** `api-follow-app/DECISION-REGISTER.md` D-206 (backend) y D-148 (obligatoriedad en concesionaria).
 
 ---
 

@@ -16,6 +16,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { canInWorkshop } from "@/lib/admin-access";
 import { vehicleClaimApi } from "@/lib/api";
 import { CLAIM_PANEL_NO_PERMISSION } from "@/lib/vehicle-claim-errors";
+import { CLAIM_STATUS_BADGES } from "@/components/vehicle-claim/claim-status";
 import type {
   VehicleClaimStatus,
   WorkshopClaimListItem,
@@ -25,8 +26,8 @@ import type {
 // F-2 — "Reclamos" (listado del taller, contexto WORKSHOP).
 //
 // Journey de lectura: quick action "Reclamos" del dashboard → listado de los
-// invites de reclamo del taller del contexto → detalle del vehículo
-// (/vehicles/{vehicleId}).
+// invites de reclamo del taller del contexto → detalle del reclamo
+// (/reclamos/{claimId}).
 //
 // Comparte la query key `["vehicle-claims","list",workshopId]` con el panel
 // de la atención (page=1&limit=100): una sola cache para el listado, con
@@ -41,8 +42,6 @@ import type {
 
 const PAGE_SIZE = 20;
 
-type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
-
 /** Chips del filtro (label literal del copy §2) + estados que agrupan. */
 const CHIPS: { id: string; label: string; statuses: VehicleClaimStatus[] }[] =
   [
@@ -54,20 +53,7 @@ const CHIPS: { id: string; label: string; statuses: VehicleClaimStatus[] }[] =
     { id: "revoked", label: "Revocado", statuses: ["revoked"] },
   ];
 
-/** Badge por estado (variantes derivadas — flag en el reporte). */
-const STATUS_BADGES: Record<
-  VehicleClaimStatus,
-  { label: string; variant: BadgeVariant }
-> = {
-  pending: { label: "Vigente", variant: "success" },
-  verification_required: { label: "Vigente", variant: "success" },
-  verified: { label: "Vigente", variant: "success" },
-  manual_review: { label: "A revisar", variant: "warning" },
-  claimed: { label: "Reclamado", variant: "info" },
-  claim_blocked: { label: "Bloqueado", variant: "destructive" },
-  expired: { label: "Vencido", variant: "secondary" },
-  revoked: { label: "Revocado", variant: "secondary" },
-};
+
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -281,11 +267,11 @@ export default function ReclamosPage() {
                 aria-busy={listQuery.isFetching}
               >
                 {pageItems.map((item: WorkshopClaimListItem) => {
-                  const badge = STATUS_BADGES[item.status];
+                  const badge = CLAIM_STATUS_BADGES[item.status];
                   return (
                     <li key={item.id}>
                       <Link
-                        href={`/vehicles/${item.vehicleId}`}
+                        href={`/reclamos/${item.id}`}
                         className="block rounded-xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <Card className="transition-colors hover:bg-muted/40 hover:ring-primary/40">

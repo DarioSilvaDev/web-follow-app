@@ -27,7 +27,8 @@ import { vehicleKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { VehicleCard } from "@/components/vehicle/vehicle-card";
+import { typeScale } from "@/components/ui/type-scale";
+
 import { DashboardActions } from "@/components/dashboard/dashboard-actions";
 import { VehicleSelector } from "@/components/dashboard/vehicle-selector";
 import { VehicleHeroCard } from "@/components/dashboard/vehicle-hero-card";
@@ -67,7 +68,7 @@ function HeroSkeleton() {
     <Card aria-hidden="true">
       <CardContent className="flex flex-col gap-4 p-4 sm:p-6">
         <div className="flex items-center gap-3">
-          <div className="h-11 w-11 animate-pulse rounded-xl bg-muted" />
+          <div className="h-11 w-11 animate-pulse rounded-card bg-muted" />
           <div className="flex-1 space-y-2">
             <div className="h-5 w-48 animate-pulse rounded bg-muted" />
             <div className="h-4 w-28 animate-pulse rounded bg-muted" />
@@ -139,7 +140,7 @@ function DashboardContent({ user }: { user: SessionUser }) {
   const isWorkshop = activeContext?.type === "WORKSHOP";
   const isDealership = activeContext?.type === "DEALERSHIP";
 
-  // "Registrar atención": taller (WORKSHOP) o titular en PERSONAL.
+  // "Registrar servicio": taller (WORKSHOP) o titular en PERSONAL.
   // En DEALERSHIP no existe la acción → no se renderiza (no se inventa ruta).
   const detailVehicle = detailQuery.data ?? undefined;
   const isOwnerOfActive = detailVehicle
@@ -152,6 +153,12 @@ function DashboardContent({ user }: { user: SessionUser }) {
       : !isDealership && isOwnerOfActive
         ? `/vehicles/${activeVehicleId}/servicios/nueva`
         : undefined;
+
+  // D-12 (Gap 1): el backend decide quién puede registrar km. Misma
+  // tolerancia que el detalle: `capabilities` manda; sin capabilities se cae
+  // al ownership activo del vehículo.
+  const canRecordMileage =
+    detailVehicle?.capabilities?.canRecordMileage ?? isOwnerOfActive;
 
   const handleSelectVehicle = (vehicleId: string) => {
     router.replace(`/dashboard?v=${vehicleId}`, { scroll: false });
@@ -184,7 +191,7 @@ function DashboardContent({ user }: { user: SessionUser }) {
       {/* 1 — Header del dashboard: saludo secundario + acción primaria */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
+          <h1 className={`font-heading font-semibold tracking-tight ${typeScale.display}`}>
             Hola, {user.firstName || "Usuario"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -238,6 +245,7 @@ function DashboardContent({ user }: { user: SessionUser }) {
                   : undefined
               }
               registerCareHref={registerCareHref}
+              canRecordMileage={canRecordMileage}
             />
           )}
 
@@ -267,34 +275,6 @@ function DashboardContent({ user }: { user: SessionUser }) {
               />
             </div>
           </div>
-
-          {/* 5 — Listado de vehículos (sección existente) */}
-          <section aria-labelledby="my-vehicles-heading">
-            <div className="mb-3 flex items-center justify-between">
-              <h2
-                id="my-vehicles-heading"
-                className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-              >
-                Mis vehículos
-              </h2>
-              <Link
-                href="/vehicles"
-                className="text-sm font-medium text-primary hover:underline"
-              >
-                Ver todos
-              </Link>
-            </div>
-            <ul className="flex flex-col gap-3">
-              {vehicles.map((vehicle) => (
-                <li key={vehicle.id}>
-                  <VehicleCard
-                    vehicle={vehicle}
-                    isOwner={isVehicleOwner(vehicle, user.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
         </>
       )}
     </div>

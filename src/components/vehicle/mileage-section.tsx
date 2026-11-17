@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+// import { Textarea } from "@/components/ui/textarea";
 import { vehicleApi } from "@/lib/api";
 import { errorStatus } from "@/lib/api-error";
 import { formatDateTime } from "@/lib/format-date";
@@ -159,7 +159,7 @@ export function MileageSection({
                 required
               />
             </div>
-            <div className="grid gap-1.5">
+            {/* <div className="grid gap-1.5">
               <Label htmlFor="mileage-notes">Notas (opcional)</Label>
               <Textarea
                 id="mileage-notes"
@@ -168,7 +168,7 @@ export function MileageSection({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
-            </div>
+            </div> */}
             {formError && (
               <p className="text-sm text-destructive" role="alert">
                 {formError}

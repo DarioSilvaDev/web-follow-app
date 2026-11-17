@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Calendar, Gauge, Pencil, Tag } from "lucide-react";
+import { ArrowLeft, Calendar, Gauge, Pencil, StickyNote, Tag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { vehicleColorHex } from "@/lib/vehicle-colors";
 import type { Vehicle } from "@/types/vehicle";
 
 interface VehicleHeaderProps {
@@ -21,8 +22,9 @@ interface VehicleHeaderProps {
 }
 
 function catalogLabel(vehicle: Vehicle): string | null {
-  const parts = [vehicle.brand, vehicle.model, vehicle.version].filter(
-    (part): part is string => Boolean(part && part?.trim()),
+  // MVP sin versiones: marca + modelo (la `version` legacy no se muestra).
+  const parts = [vehicle.brand, vehicle.model].filter((part): part is string =>
+    Boolean(part && part?.trim()),
   );
   return parts.length > 0 ? parts.join(" ") : null;
 }
@@ -60,7 +62,7 @@ export function VehicleHeader({
       </div>
 
       {/* Header card */}
-      <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+      <div className="rounded-card border border-border bg-card p-card sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           {/* Left: vehicle identity */}
           <div className="flex items-start gap-3">
@@ -69,8 +71,17 @@ export function VehicleHeader({
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight truncate">
-                  {vehicle.licensePlate}
+                {/* Matrícula con tratamiento de "patente": borde doble, fondo
+                    neutro y mono en mayúsculas con tracking amplio para que
+                    la patente se reconozca de un vistazo. El h1 conserva la
+                    semántica de encabezado (el nombre accesible sigue siendo
+                    la patente). */}
+                <h1 className="min-w-0">
+                  <span className="inline-flex items-center rounded-md border-2 border-border bg-muted/50 p-0.5">
+                    <span className="rounded-[4px] border border-border/70 px-2 py-0.5 font-mono text-lg font-bold uppercase tracking-[0.15em] text-foreground">
+                      {vehicle.licensePlate}
+                    </span>
+                  </span>
                 </h1>
                 {/* F-013 §7 / D-048: badge "Acceso compartido" para non-owners
                     (documentado en DECISION-REGISTER §20; se restauró tras el
@@ -96,8 +107,16 @@ export function VehicleHeader({
                 {vehicle.color && (
                   <span className="inline-flex items-center gap-1">
                     <span
+                      aria-hidden="true"
                       className="h-2.5 w-2.5 rounded-full border border-border"
-                      style={{ backgroundColor: vehicle.color === "Blanco" ? "#f5f5f5" : vehicle.color === "Negro" ? "#1a1a1a" : vehicle.color }}
+                      style={{
+                        // Color declarado (catálogo es): CSS no entiende "rojo",
+                        // de ahí el mapa `vehicleColorHex`. Sin match conocido,
+                        // el círculo queda sin relleno antes que mostrar un
+                        // color equivocado.
+                        backgroundColor:
+                          vehicleColorHex(vehicle.color) ?? "transparent",
+                      }}
                     />
                     {vehicle.color}
                   </span>
@@ -123,6 +142,25 @@ export function VehicleHeader({
               </Link>
             )}
           </div>
+        </div>
+
+        {/* Notas — antes vivían en la Ficha (sección duplicada, removida).
+            El bloque es permanente (decisión de producto): con notas muestra el
+            texto; sin notas muestra el placeholder "Sin notas registradas". */}
+        <div className="mt-4 border-t border-border/60 pt-3">
+          <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
+            Notas
+          </p>
+          {vehicle.notes?.trim() ? (
+            <p className="mt-1 text-sm whitespace-pre-wrap text-foreground">
+              {vehicle.notes.trim()}
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Sin notas registradas
+            </p>
+          )}
         </div>
       </div>
     </div>

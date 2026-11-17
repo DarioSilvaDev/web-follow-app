@@ -28,6 +28,7 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { formatDateOnly } from "@/lib/format-date";
 import { mergeHistory } from "@/lib/vehicle-history";
 import type {
   TimelineEntry,
@@ -66,6 +67,21 @@ function formatTimelineDate(iso: string): string {
   });
 }
 
+/**
+ * Plan 05 / F-TZ-7: `dateKind` decide **zona horaria**, no si se muestra hora.
+ * - `date` → fecha calendario en UTC (`formatDateOnly`), nunca hora.
+ * - `instant` → mismo render de siempre (`formatTimelineDate`, hora local y su
+ *   detección de medianoche): si no, todo `createdAt` de medianoche pasaría a
+ *   mostrar `00:00` (regresión R1).
+ */
+function formatEntryDate(entry: TimelineEntry): string {
+  // `numeric` mantiene la consistencia visual con `formatTimelineDate`:
+  // en esta lista conviven fechas calendario e instantes con el mismo formato.
+  return entry.dateKind === "date"
+    ? formatDateOnly(entry.dateOnly, "numeric")
+    : formatTimelineDate(entry.date);
+}
+
 interface HistorySectionProps {
   /** Salida de GET /vehicles/:id/history (undefined mientras carga). */
   history?: VehicleHistoryResponse;
@@ -87,7 +103,7 @@ function TimelineItemBody({ entry }: { entry: TimelineEntry }) {
           dateTime={entry.date}
           className="shrink-0 text-xs text-muted-foreground"
         >
-          {formatTimelineDate(entry.date)}
+          {formatEntryDate(entry)}
         </time>
       </div>
       {entry.actor ? (
@@ -188,7 +204,7 @@ export function HistorySection({
                     aria-hidden="true"
                     className="relative z-[1] flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-background"
                   >
-                    <Icon className="h-3 w-3 text-primary" />
+                    <Icon className="h-3.5 w-3.5 text-primary" />
                   </span>
 
                   <div className="min-w-0 flex-1">

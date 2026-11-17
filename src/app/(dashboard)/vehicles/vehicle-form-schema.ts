@@ -15,18 +15,19 @@ import type {
 // - D-036: VIN optional. D-038: catalog optional.
 // - D-04/D-145 (Gap 1): VIN is validated with the shared format rule when
 //   present (register only — see `editVehicleFormSchema`).
-// - D-07 (Gap 1): `initialMileage` is captured only in DEALERSHIP context.
+// - D-07 (Gap 1): `initialMileage` es obligatorio en DEALERSHIP y opcional en
+//   PERSONAL (D-206: kilometraje actual declarado por el propietario).
 // ---------------------------------------------------------------------------
 
 export const vehicleFormSchema = z.object({
   licensePlate: z
     .string()
     .trim()
-    .min(2, "La placa debe tener al menos 2 caracteres")
-    .max(10, "La placa debe tener como máximo 10 caracteres")
+    .min(2, "La patente debe tener al menos 2 caracteres")
+    .max(10, "La patente debe tener como máximo 10 caracteres")
     .refine(
       (value) => /^[a-zA-Z0-9]+$/.test(value),
-      "La placa solo puede contener letras y números",
+      "La patente solo puede contener letras y números",
     )
     .transform((value) => value.toUpperCase()),
   vin: z
@@ -66,8 +67,10 @@ export const vehicleFormSchema = z.object({
   color: z.string().trim().optional(),
   notes: z.string().trim().optional(),
   /**
-   * D-07 (Gap 1): kilometraje inicial (alta de 0 km). Solo se renderiza y se
-   * exige en contexto DEALERSHIP; en PERSONAL el campo no existe en el form.
+   * D-07 (Gap 1): kilometraje al dar de alta el vehículo.
+   * - PERSONAL (D-206): "kilometraje actual" OPCIONAL. El usuario está
+   *   registrando SU vehículo y conoce (o puede consultar) el odómetro.
+   * - DEALERSHIP: "kilometraje inicial" OBLIGATORIO (alta de 0 km).
    * Se mantiene como string (input controlado) y se valida el formato aquí;
    * la obligatoriedad en DEALERSHIP la impone el submit (setError) porque el
    * schema no conoce el Active Context.
@@ -78,7 +81,7 @@ export const vehicleFormSchema = z.object({
     .optional()
     .refine(
       (value) => value === undefined || value === "" || /^\d+$/.test(value),
-      "El kilometraje inicial debe ser un número entero",
+      "El kilometraje debe ser un número entero",
     ),
 });
 
@@ -103,20 +106,24 @@ export type EditVehicleFormValues = z.infer<typeof editVehicleFormSchema>;
  * `toEditVehicleInput` (D-043 sends explicit `null` for cleared optional
  * fields; register keeps empty optionals → undefined/omitted).
  *
- * D-07 (Gap 1): `initialMileage` is ONLY included in DEALERSHIP context. The
- * backend rejects it otherwise (`@IsEmpty()` on the personal path), so we omit
- * it entirely rather than relying on the caller to build the object by hand.
- * D-04/D-145: the VIN is normalized before it travels.
+ * D-206: `initialMileage` viaja en AMBOS contextos cuando el usuario lo
+ * completa. En PERSONAL es el "kilometraje actual" opcional que declara el
+ * propietario; en DEALERSHIP es el "kilometraje inicial" obligatorio (la
+ * obligatoriedad la impone el submit, no este mapper). El backend lo persiste
+ * como la primera lectura del odómetro (source owner / dealership).
+ * D-04/D-145: el VIN se normaliza antes de viajar.
+ *
+ * Catálogo (MVP sin versiones): `brandId` + `modelId` viajan JUNTOS o no
+ * viajan. El backend rechaza el par incompleto, así que si falta cualquiera
+ * de los dos se omiten ambos.
  */
 export function toVehicleInput(
   data: VehicleFormValues,
-  versionId: string,
-  isDealership = false,
+  catalog: { brandId: string; modelId: string },
 ): RegisterVehicleInput {
   const payload: RegisterVehicleInput = {
     licensePlate: data.licensePlate,
     vin: data.vin ? normalizeVin(data.vin) : undefined,
-    versionId: versionId || undefined,
     manufactureYear: data.manufactureYear
       ? Number(data.manufactureYear)
       : undefined,
@@ -125,8 +132,14 @@ export function toVehicleInput(
     notes: data.notes || undefined,
   };
 
-  if (isDealership && data.initialMileage) {
-    payload.initialMileage = Number(data.initialMileage);
+  if (catalog.brandId !== "" && catalog.modelId !== "") {
+    payload.brandId = catalog.brandId;
+    payload.modelId = catalog.modelId;
+  }
+
+  const mileage = data.initialMileage?.trim();
+  if (mileage) {
+    payload.initialMileage = Number(mileage);
   }
 
   return payload;
@@ -167,9 +180,11 @@ function optionalYearOrNull(
  * - cleared vs. prefilled content → explicit `null` (backend persists NULL);
  * - still empty and was empty in the prefill → omit (`undefined`, no noise).
  *
- * `versionId` is only sent when the user EXPLICITLY changed it (never null):
- * omitted = the existing catalog branch is NOT touched (RF-2). `licensePlate`
- * is required and always travels with a value (never null).
+ * `brandId`/`modelId` solo viajan cuando el usuario cambió la selección del
+ * catálogo (nunca null): omitir = la rama actual NO se toca (RF-2). Viajan
+ * SIEMPRE juntos — el backend rechaza el par incompleto, por eso el mapper
+ * exige ambos. `licensePlate` is required and always travels with a value
+ * (never null).
  *
  * D-03 (Gap 1): the VIN is NEVER part of this payload — the backend rejects it
  * by PATCH and the correction goes through the audited command instead.
@@ -179,7 +194,7 @@ function optionalYearOrNull(
 export function toEditVehicleInput(
   original: Vehicle,
   data: EditVehicleFormValues,
-  versionId: string,
+  catalog: { brandId: string; modelId: string },
 ): UpdateVehicleInput {
   const originalValues = vehicleToFormValues(original);
 
@@ -203,10 +218,11 @@ export function toEditVehicleInput(
   );
   if (modelYear !== undefined) payload.modelYear = modelYear;
 
-  // versionId: only an explicit change travels (D-043); empty select ("" =
-  // "—" quitar versión) → undefined → omitted → branch untouched (RF-2).
-  if (versionId !== "" && versionId !== original.versionId) {
-    payload.versionId = versionId;
+  // Catálogo (MVP sin versiones): la página solo pasa los ids cuando la
+  // selección cambió; acá se exige el par completo (nunca uno solo).
+  if (catalog.brandId !== "" && catalog.modelId !== "") {
+    payload.brandId = catalog.brandId;
+    payload.modelId = catalog.modelId;
   }
 
   return payload;
@@ -238,14 +254,14 @@ export function conflictField(
   message?: string,
 ): "licensePlate" | "vin" | "engineNumber" | null {
   const text = (message ?? "").toLowerCase();
-  if (text.includes("placa") || text.includes("plate")) return "licensePlate";
+  if (text.includes("patente") || text.includes("plate")) return "licensePlate";
   if (text.includes("vin")) return "vin";
   if (text.includes("motor") || text.includes("engine")) return "engineNumber";
   return null;
 }
 
 export const CONFLICT_MESSAGES = {
-  licensePlate: "Ya existe un vehículo registrado con esa placa.",
+  licensePlate: "Ya existe un vehículo registrado con esa patente.",
   vin: "Ya existe un vehículo registrado con ese VIN.",
   engineNumber: "Ya existe un vehículo registrado con ese número de motor.",
 } as const;

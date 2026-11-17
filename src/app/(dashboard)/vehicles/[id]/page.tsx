@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRightLeft, Store } from "lucide-react";
+import { ArrowRight, ArrowRightLeft, Store, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
@@ -15,10 +15,9 @@ import { MEDIA_STALE_TIME } from "@/lib/constants";
 import { activeConsignmentDealership } from "@/lib/consignment";
 import { vehicleKeys } from "@/lib/query-keys";
 import { VehicleHeader } from "@/components/vehicle/vehicle-header";
-import { FichaCard } from "@/components/vehicle/ficha-card";
 import { PhotosSection } from "@/components/vehicle/photos-section";
 import { DocumentsSection } from "@/components/vehicle/documents-section";
-import { MileageSection } from "@/components/vehicle/mileage-section";
+// import { MileageSection } from "@/components/vehicle/mileage-section";
 import { HistorySection } from "@/components/vehicle/history-section";
 import { VehicleDetailSkeleton } from "@/components/vehicle/vehicle-detail-skeleton";
 import { TransferDialog } from "@/components/transfer/transfer-dialog";
@@ -140,7 +139,7 @@ export default function VehicleDetailPage() {
   // ser "owner"). CONTRACT TOLERANCE: mientras un backend previo no envíe
   // `capabilities`, se cae al comportamiento anterior basado en ownership.
   const canEdit = vehicle.capabilities?.canEdit ?? isOwner;
-  const canRecordMileage = vehicle.capabilities?.canRecordMileage ?? isOwner;
+  // const canRecordMileage = vehicle.capabilities?.canRecordMileage ?? isOwner;
 
   // Milestone consignación (D-107/RB-09): durante la exhibición la dealership
   // es titular intermedio. El banner se muestra a QUIEN NO PUEDE EDITAR
@@ -176,28 +175,67 @@ export default function VehicleDetailPage() {
         </div>
       )}
 
-      {/* Acciones específicas del contexto */}
-      <div className="flex flex-wrap gap-2">
+      {/* Acciones específicas del contexto — filas a ancho completo con
+          icono + título + subtítulo y flecha (patrón de la captura de
+          referencia). El contenedor es columna porque las filas son w-full. */}
+      <div className="flex flex-col gap-3">
         {/* Iteración 2-2 / RF-8: "Registrar servicio" solo para el owner en
             contexto PERSONAL (null). Con taller seleccionado (WORKSHOP) el
             owner ve el flujo del taller. */}
         {isOwner && activeContext === null && (
           <>
-            <Link href={`/vehicles/${vehicle.id}/servicios/nueva`}>
-              <Button variant="outline" size="sm">
-                Registrar servicio
-              </Button>
+            {/* Fila primaria: CTA destacada sobre bg-primary. El Link es la
+                fila entera (no un Button anidado) para que el target de
+                clic/teclado sea todo el bloque. */}
+            <Link
+              href={`/vehicles/${vehicle.id}/servicios/nueva`}
+              className="group flex w-full items-center gap-3 rounded-xl bg-primary px-4 py-3.5 text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/70 motion-reduce:transition-none"
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-foreground/10"
+              >
+                <Wrench className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold">
+                  Registrar servicio
+                </span>
+                <span className="block text-xs text-primary-foreground/80">
+                  Agregar una nueva atención
+                </span>
+              </span>
+              <ArrowRight
+                aria-hidden="true"
+                className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:translate-x-0"
+              />
             </Link>
             {/* Fase 1 / D-078: CTA de transferencia — owner + contexto PERSONAL
                 (un taller activo devolvería 403 en el flujo de propietario). */}
-            <Button
-              variant="outline"
-              size="sm"
+            <button
+              type="button"
               onClick={() => setTransferOpen(true)}
+              className="group flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
             >
-              <ArrowRightLeft className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-              Transferir
-            </Button>
+              <span
+                aria-hidden="true"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10"
+              >
+                <ArrowRightLeft className="h-5 w-5 text-primary" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-foreground">
+                  Transferir vehículo
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Cambiar titularidad
+                </span>
+              </span>
+              <ArrowRight
+                aria-hidden="true"
+                className="h-4 w-4 shrink-0 text-primary transition-transform group-hover:translate-x-0.5 motion-reduce:translate-x-0"
+              />
+            </button>
             <TransferDialog
               open={transferOpen}
               onOpenChange={setTransferOpen}
@@ -209,9 +247,6 @@ export default function VehicleDetailPage() {
           </>
         )}
       </div>
-
-      {/* Ficha (progressive: apenas llega GET /:id) */}
-      <FichaCard vehicle={vehicle} />
 
       {/* Fotos (signed URLs batch ?signed=true + visor full-screen) */}
       <PhotosSection
@@ -242,7 +277,7 @@ export default function VehicleDetailPage() {
       />
 
       {/* Kilometraje (últimos 5 de GET /:id) */}
-      <MileageSection vehicle={vehicle} canWrite={canRecordMileage} />
+      {/* <MileageSection vehicle={vehicle} canWrite={canRecordMileage} /> */}
 
       {/* Historial (F-014 / D-052: merge cronológico de transfers, km y
           titularidad — mismo timeline que el dashboard) */}

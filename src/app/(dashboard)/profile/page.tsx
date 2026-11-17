@@ -26,9 +26,7 @@ import { PersonalInfoCard } from "./personal-info-card";
 
 const changePasswordSchema = z
   .object({
-    currentPassword: z
-      .string()
-      .min(1, "La contraseña actual es requerida"),
+    currentPassword: z.string().min(1, "La contraseña actual es requerida"),
     newPassword: z
       .string()
       .min(8, "La contraseña debe tener al menos 8 caracteres")
@@ -138,7 +136,7 @@ function AliasCard() {
   // enforcement real server-side.
   const inCooldown = Boolean(
     data?.nextChangeAllowedAt &&
-      new Date(data.nextChangeAllowedAt).getTime() > Date.now(),
+    new Date(data.nextChangeAllowedAt).getTime() > Date.now(),
   );
 
   return (
@@ -297,7 +295,7 @@ export default function ProfilePage() {
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
-          <CardContent className="grid gap-4">
+          <CardContent className="grid gap-4 mb-4">
             {success && (
               <Callout variant="success" icon={CheckCircle2}>
                 Contraseña actualizada exitosamente.

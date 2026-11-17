@@ -8,6 +8,15 @@ export interface SessionUser {
   language: string;
   status: string;
   isVehicleOwner: boolean;
+  /**
+   * Celular E.164 (+54…) o null si no hay. `phoneAreaCode`/`phoneNationalNumber`
+   * son los campos de display ('' = no informado); ausentes en sesiones
+   * cacheadas viejas — tolerar con optional chaining (nunca parsear E.164).
+   * Legacy: `phone` puede venir crudo sin split (usuario viejo).
+   */
+  phone: string | null;
+  phoneAreaCode?: string | null;
+  phoneNationalNumber?: string | null;
   roles: Array<{ id: string; type: string; name: string; permissions?: string[] }>;
   workshopMemberships: Array<{
     workshopId: string;

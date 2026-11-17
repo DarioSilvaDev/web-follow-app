@@ -51,6 +51,7 @@ export interface ClaimApiError {
   status?: number;
   message?: string;
   code?: string;
+  errors?: Record<string, unknown>;
 }
 
 /** Extrae el status HTTP de un error normalizado por `toApiError` (lib/api). */
@@ -67,6 +68,12 @@ function claimErrorMessage(error: unknown): string {
   return (error as ClaimApiError)?.message ?? "";
 }
 
+/** Extrae `errors.reason` del envelope del backend (D-025). */
+function claimErrorReason(error: unknown): string | undefined {
+  const errors = (error as ClaimApiError)?.errors;
+  return typeof errors?.reason === "string" ? errors.reason : undefined;
+}
+
 /**
  * Clasifica un error de la API pública de reclamo (§4 del copy spec).
  *
@@ -77,6 +84,7 @@ export function claimPublicErrorKind(error: unknown): ClaimPublicErrorKind {
   const status = claimErrorStatus(error);
   const code = claimErrorCode(error);
   const message = claimErrorMessage(error);
+  const reason = claimErrorReason(error);
 
   // Sin status = red / timeout / error de parseo (ky no lanzó HTTPError).
   if (status === undefined) return "network";
@@ -94,7 +102,11 @@ export function claimPublicErrorKind(error: unknown): ClaimPublicErrorKind {
   if (status === 409) {
     if (message.includes("Demasiados intentos")) return "locked";
     if (message.includes("ya no está disponible")) return "unavailable";
-    if (message.includes("titular registrado")) return "claim_blocked";
+    if (
+      reason === "claim_blocked" ||
+      message.includes("titular registrado")
+    )
+      return "claim_blocked";
     return "generic";
   }
 
@@ -289,12 +301,18 @@ export function resolveClaimPanelMessage(error: unknown): string {
 /**
  * §2.6 — detecta el 409 "vehículo con titular" del POST create.
  *
- * El backend distingue `already_claimed` / `active_owner` solo por
- * `errors.reason`, que `toApiError` descarta → se clasifica por el mensaje
- * (patrón D-S3). Recuperable: el panel muestra el callout y el CTA sigue
- * disponible.
+ * El backend distingue `already_claimed` / `active_owner` por
+ * `errors.reason` (envelope D-025). Se clasifica por ese campo primero (deuda
+ * reparada: antes se usaba el mensaje, frágil ante cambios de copy). Se mantiene
+ * el fallback por mensaje para deploys viejos del backend que no envíen
+ * `errors` (o para ky/errores normalizados sin envelope).
+ *
+ * En §2.1 el panel muestra el callout §2.6 y oculta el CTA de generar
+ * (reintentar el POST siempre daría el mismo 409).
  */
 export function isClaimAlreadyTaken(error: unknown): boolean {
   if (claimErrorStatus(error) !== 409) return false;
+  const reason = claimErrorReason(error);
+  if (reason === "already_claimed" || reason === "active_owner") return true;
   return claimErrorMessage(error).includes("ya tiene titular");
 }

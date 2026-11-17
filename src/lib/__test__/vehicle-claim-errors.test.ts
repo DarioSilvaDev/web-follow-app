@@ -18,8 +18,9 @@ function apiError(
   status?: number,
   code?: string,
   message?: string,
+  errors?: Record<string, unknown>,
 ): Record<string, unknown> {
-  return { status, code, message };
+  return { status, code, message, errors };
 }
 
 describe("claimPublicErrorKind", () => {
@@ -147,6 +148,23 @@ describe("isClaimAlreadyTaken", () => {
     expect(
       isClaimAlreadyTaken(
         apiError(409, "CONFLICT", "Este vehículo ya tiene titular; no se envió invitación."),
+      ),
+    ).toBe(true);
+  });
+
+  it("detecta el 409 de create por reason aunque el mensaje cambie", () => {
+    expect(
+      isClaimAlreadyTaken(
+        apiError(409, "CONFLICT", "otro mensaje", {
+          reason: "active_owner",
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isClaimAlreadyTaken(
+        apiError(409, "CONFLICT", "otro mensaje", {
+          reason: "already_claimed",
+        }),
       ),
     ).toBe(true);
   });

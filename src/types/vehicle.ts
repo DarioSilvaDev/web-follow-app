@@ -7,6 +7,8 @@
  * OPTIONAL here and the UI renders "—" when missing (D-038).
  */
 
+import type { CareEpisodeVerification } from "./care-episode";
+
 export type VehicleOwnershipType = "owner" | "co_owner" | "company";
 
 /**
@@ -342,9 +344,14 @@ export interface VehicleCareEpisode {
   status: "open" | "delivered" | "cancelled";
   /** D-063: fijo e inmutable en la creación. */
   source: "owner" | "workshop";
-  /** D-064: solo talleres verifican. */
-  verification: "unverified" | "verified";
+  /**
+   * D-064: solo talleres verifican. `rejected` = rechazo de verificación
+   * (diseño aprobado) — union compartido `CareEpisodeVerification`.
+   */
+  verification: CareEpisodeVerification;
   mileageIn: number | null;
+  /** Km al cerrar (salida) — solo lectura aditiva del historial (D-070). */
+  mileageOut: number | null;
   customerNotes: string | null;
   checkedInAt: string | null;
   createdAt: string;
@@ -392,11 +399,13 @@ export interface Vehicle {
   licensePlate: string;
   vin?: string | null;
   engineNumber?: string | null;
+  /** @legacy El MVP no usa versiones: solo se conserva por respuestas viejas. */
   versionId?: string | null;
   brandId?: string | null;
   modelId?: string | null;
   brand?: string | null;
   model?: string | null;
+  /** @legacy El MVP no usa versiones: solo se conserva por respuestas viejas. */
   version?: string | null;
   manufactureYear?: number | null;
   modelYear?: number | null;
@@ -451,15 +460,22 @@ export interface RegisterVehicleInput {
   licensePlate: string;
   vin?: string;
   engineNumber?: string;
-  versionId?: string;
+  /**
+   * Catálogo (MVP sin versiones): `brandId` + `modelId` viajan JUNTOS; el
+   * backend rechaza el par incompleto. `versionId` ya NO se acepta.
+   */
+  brandId?: string;
+  modelId?: string;
   manufactureYear?: number;
   modelYear?: number;
   color?: string;
   notes?: string;
   /**
-   * D-07 (Gap 1): kilometraje inicial. OBLIGATORIO en contexto DEALERSHIP
-   * (alta de 0 km por concesionaria); en PERSONAL el backend lo rechaza si
-   * viaja, por eso `toVehicleInput` solo lo incluye en contexto DEALERSHIP.
+   * D-07 (Gap 1): kilometraje al dar de alta el vehículo.
+   * - DEALERSHIP: OBLIGATORIO (alta de 0 km por concesionaria).
+   * - PERSONAL (D-206): OPCIONAL — "kilometraje actual" que declara el
+   *   propietario. El backend lo persiste como la primera lectura con
+   *   `source=owner` en la misma transacción que el alta.
    */
   initialMileage?: number;
 }
@@ -473,8 +489,9 @@ export interface RegisterVehicleInput {
  * Prisma persiste NULL). El alta (register) NUNCA envía null — usa
  * `RegisterVehicleInput` (opcionales vacíos → undefined/omitidos).
  *
- * `versionId` NUNCA viaja null (omitir = no tocar la rama del catálogo, RF-2)
- * y `licensePlate` es obligatoria (nunca null).
+ * `brandId`/`modelId` viajan JUNTOS y NUNCA null (omitir = no tocar la rama
+ * del catálogo, RF-2); `versionId` ya NO se acepta. `licensePlate` es
+ * obligatoria (nunca null).
  *
  * D-03 (Gap 1) — BREAKING: `vin` YA NO es editable por PATCH. El backend lo
  * declara con `@IsEmpty()` y rechaza con 400. La corrección de VIN es un
@@ -484,7 +501,8 @@ export interface RegisterVehicleInput {
 export interface UpdateVehicleInput {
   licensePlate?: string;
   engineNumber?: string | null;
-  versionId?: string;
+  brandId?: string;
+  modelId?: string;
   manufactureYear?: number | null;
   modelYear?: number | null;
   color?: string | null;

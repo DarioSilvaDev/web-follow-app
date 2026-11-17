@@ -43,6 +43,7 @@ function makeCareEpisode(
     source: "workshop",
     verification: "verified",
     mileageIn: 42380,
+    mileageOut: null,
     customerNotes: null,
     checkedInAt: null,
     createdAt: "2026-06-18T00:00:00.000Z",
@@ -147,6 +148,36 @@ describe("VehicleTimelineCard", () => {
     expect(screen.getByText("Registrado por el propietario")).toBeInTheDocument();
   });
 
+  it("episodio rechazado → badge 'Rechazado por {taller}' (destructive), nunca 'Pendiente de verificación'", () => {
+    render(
+      <VehicleTimelineCard
+        vehicleId="v1"
+        historyStatus="success"
+        history={historyWithCare([
+          makeCareEpisode({
+            id: "c4",
+            source: "owner",
+            verification: "rejected",
+            workshop: { id: "w1", name: "Taller Norte" },
+            workshopName: "Taller Norte",
+          }),
+        ])}
+        onRetry={onRetry}
+      />,
+    );
+
+    const badge = screen.getByText("Rechazado por Taller Norte");
+    expect(badge).toBeInTheDocument();
+    // Pill tintado del DS (contraste AA).
+    expect(badge).toHaveClass("bg-destructive/10");
+    expect(
+      screen.queryByText("Pendiente de verificación"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Verificado por/)).not.toBeInTheDocument();
+    // El registrante sigue siendo el propietario (el rechazo no cambia el actor).
+    expect(screen.getByText("Registrado por el propietario")).toBeInTheDocument();
+  });
+
   it("historial vacío → estado vacío accionable con CTA", () => {
     render(
       <VehicleTimelineCard
@@ -162,7 +193,7 @@ describe("VehicleTimelineCard", () => {
       screen.getByText("Todavía no hay atenciones registradas"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /Registrar atención/ }),
+      screen.getByRole("link", { name: /Registrar servicio/ }),
     ).toHaveAttribute("href", "/atenciones/nueva");
   });
 
@@ -177,7 +208,7 @@ describe("VehicleTimelineCard", () => {
     );
 
     expect(
-      screen.queryByRole("link", { name: /Registrar atención/ }),
+      screen.queryByRole("link", { name: /Registrar servicio/ }),
     ).not.toBeInTheDocument();
   });
 

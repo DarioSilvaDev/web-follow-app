@@ -16,7 +16,7 @@ import Link from "next/link";
 import { ArrowRight, Check, FileText, Minus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { formatDate } from "@/lib/format-date";
+import { formatDate, formatDateOnly, toDateOnly } from "@/lib/format-date";
 import { cn } from "cn";
 import type { Vehicle, VehicleCareEpisode } from "@/types/vehicle";
 
@@ -49,6 +49,13 @@ function careRegistrant(episode: VehicleCareEpisode): string {
   if (episode.verification === "verified" && workshopName) {
     return `Verificado por ${workshopName}`;
   }
+  if (episode.verification === "rejected") {
+    // Rechazo de verificación (diseño aprobado): el estado manda sobre el
+    // actor; sin nombre de taller → fallback genérico.
+    return workshopName
+      ? `Rechazado por ${workshopName}`
+      : "Rechazado por el taller responsable";
+  }
   return "Registrado por el propietario";
 }
 
@@ -76,11 +83,11 @@ function ChecklistItem({
         )}
       >
         {done === undefined ? (
-          <Minus className="h-3 w-3" />
+          <Minus className="h-3.5 w-3.5" />
         ) : done ? (
-          <Check className="h-3 w-3" />
+          <Check className="h-3.5 w-3.5" />
         ) : (
-          <Minus className="h-3 w-3" />
+          <Minus className="h-3.5 w-3.5" />
         )}
       </span>
       <span className={cn(done === undefined && "text-muted-foreground")}>
@@ -102,6 +109,12 @@ export function TraceabilitySummaryCard({
 
   const latestCare = episodes[0];
   const hasCare = episodes.length > 0;
+  /**
+   * Plan 05 / F-TZ-9 (D-TZ-7): el `serviceDate` solo es fecha calendario si
+   * VALIDA como date-only. Un valor anómalo (p. ej. el `09:00Z` del seed) cae
+   * a la rama de instante en vez de mostrar "—" — nunca se trunca.
+   */
+  const latestCareDateOnly = toDateOnly(latestCare?.serviceDate);
   // `detailLoaded`: sin el detalle no se sabe cuántos documentos/km hay →
   // se muestra "…" (no un 0 falso).
   const detailLoaded = vehicle !== undefined;
@@ -126,11 +139,9 @@ export function TraceabilitySummaryCard({
         : isError
           ? "No disponible"
           : hasCare && latestCare
-            ? formatDate(
-                latestCare.serviceDate ??
-                  latestCare.checkedInAt ??
-                  latestCare.createdAt,
-              )
+            ? latestCareDateOnly
+              ? formatDateOnly(latestCareDateOnly)
+              : formatDate(latestCare.checkedInAt ?? latestCare.createdAt)
             : "Sin atenciones",
       detail:
         !isLoading && !isError && hasCare && latestCare ? (
@@ -142,13 +153,17 @@ export function TraceabilitySummaryCard({
               variant={
                 latestCare.verification === "verified"
                   ? "success"
-                  : "warning"
+                  : latestCare.verification === "rejected"
+                    ? "destructive"
+                    : "warning"
               }
-              className="text-[10px]"
+              className="text-xs"
             >
               {latestCare.verification === "verified"
                 ? "Verificada"
-                : "Sin verificar"}
+                : latestCare.verification === "rejected"
+                  ? "Rechazado"
+                  : "Sin verificar"}
             </Badge>
           </span>
         ) : undefined,
@@ -169,9 +184,14 @@ export function TraceabilitySummaryCard({
         ? "…"
         : `${documents.length} ${documents.length === 1 ? "adjunto" : "adjuntos"}`,
       detail: upcomingExpiry ? (
-        <span className="text-xs text-muted-foreground">
+        // Sin <p> anidado (invalid HTML, rompe el hydration): el detalle
+        // secundario es un <span> de bloque.
+        <p className="text-xs text-muted-foreground">
           Vencimiento más próximo: {formatDate(upcomingExpiry.expiresAt)}
-        </span>
+          <span className="block">
+            Según el documento {upcomingExpiry.name}
+          </span>
+        </p>
       ) : detailLoaded && documents.length === 0 ? (
         <span className="text-xs text-muted-foreground">
           Facturas, órdenes de trabajo e imágenes
@@ -194,13 +214,10 @@ export function TraceabilitySummaryCard({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Resumen de trazabilidad
         </p>
         {/* h2 real (no CardTitle, que es un div) → encabezado semántico */}
-        <h2 className="font-heading text-lg leading-snug font-medium">
-          Datos del vehículo
-        </h2>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         {/* Métricas reales — label → valor (apilado en mobile) */}
@@ -208,7 +225,7 @@ export function TraceabilitySummaryCard({
           {rows.map((row) => (
             <div key={row.label} className="min-w-0">
               <dt className="text-xs text-muted-foreground">{row.label}</dt>
-              <dd className="mt-0.5 truncate text-sm font-semibold">
+              <dd className="mt-0.5 truncate text-sm font-semibold tabular-nums">
                 {row.value}
               </dd>
               {row.detail && <dd className="mt-0.5">{row.detail}</dd>}
@@ -217,8 +234,8 @@ export function TraceabilitySummaryCard({
         </dl>
 
         {/* Checklist de completitud — ícono + texto (nunca solo color) */}
-        <div className="rounded-lg border border-border bg-muted/40 p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <div className="rounded-control border border-border bg-muted/40 p-card">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Trazabilidad de la historia
           </p>
           <ul className="flex flex-col gap-1.5">

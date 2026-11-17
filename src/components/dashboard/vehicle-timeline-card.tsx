@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatDate } from "@/lib/format-date";
+import { formatDate, formatDateOnly } from "@/lib/format-date";
 import { mergeHistory } from "@/lib/vehicle-history";
 import type {
   TimelineEntry,
@@ -84,7 +84,8 @@ function TimelineItem({
   // Taller como REGISTRANTE (source=workshop) o VERIFICANTE (solo cuando
   // verification=verified). Un episodio del dueño con nombre de taller
   // pendiente de verificación NO es "Verificado por" (misma regla que
-  // traceability-summary-card).
+  // traceability-summary-card). Rechazado cae a entry.actor — "Registrado
+  // por el propietario" (D-063); el rechazo lo muestra el badge de abajo.
   const registrant =
     care != null && workshopName
       ? care.source === "workshop"
@@ -105,7 +106,7 @@ function TimelineItem({
         aria-hidden="true"
         className="relative z-[1] flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-background"
       >
-        <Icon className="h-4 w-4 text-primary" />
+        <Icon className="h-[18px] w-[18px] text-primary" />
       </span>
 
       <div className="min-w-0 flex-1">
@@ -117,7 +118,12 @@ function TimelineItem({
             dateTime={entry.date}
             className="shrink-0 text-xs text-muted-foreground"
           >
-            {formatDate(entry.date)}
+            {/* Plan 05 / F-TZ-8: la tarjeta NUNCA muestra hora. `date` →
+                calendario en UTC; `instant` → el mismo `formatDate` de antes
+                (no se unifica con el historial: son lenguajes distintos). */}
+            {entry.dateKind === "date"
+              ? formatDateOnly(entry.dateOnly)
+              : formatDate(entry.date)}
           </time>
         </div>
 
@@ -134,13 +140,21 @@ function TimelineItem({
           {care && (
             <Badge
               variant={
-                care.verification === "verified" ? "success" : "warning"
+                care.verification === "verified"
+                  ? "success"
+                  : care.verification === "rejected"
+                    ? "destructive"
+                    : "warning"
               }
-              className="text-[10px]"
+              className="text-xs"
             >
               {care.verification === "verified"
                 ? "Verificado"
-                : "Pendiente de verificación"}
+                : care.verification === "rejected"
+                  ? workshopName
+                    ? `Rechazado por ${workshopName}`
+                    : "Rechazado por el taller responsable"
+                  : "Pendiente de verificación"}
             </Badge>
           )}
           {isCare && entry.careId && (
@@ -149,7 +163,7 @@ function TimelineItem({
               className="inline-flex min-h-9 items-center gap-1 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Ver detalle
-              <ArrowRight className="h-3 w-3" aria-hidden="true" />
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Link>
           )}
         </div>
@@ -177,7 +191,7 @@ export function VehicleTimelineCard({
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Historia del vehículo
             </p>
             {/* h2 real (no CardTitle, que es un div) → encabezado semántico */}
@@ -231,7 +245,7 @@ export function VehicleTimelineCard({
                 <Link href={registerCareHref}>
                   <Button>
                     <ClipboardList className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                    Registrar atención
+                    Registrar servicio
                   </Button>
                 </Link>
               ) : undefined

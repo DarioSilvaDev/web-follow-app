@@ -14,7 +14,7 @@
  * feedback (los errores del backend se resuelven en care-episode-errors.ts).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ActiveContext } from "@/lib/active-context";
@@ -32,12 +32,14 @@ vi.mock("next/navigation", () => ({
 const mockGetDetail = vi.fn();
 const mockUpload = vi.fn();
 const mockDelete = vi.fn();
+const mockClose = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   careEpisodeApi: {
     getCareEpisodeDetail: (...args: unknown[]) => mockGetDetail(...args),
     uploadAttachment: (...args: unknown[]) => mockUpload(...args),
     deleteAttachment: (...args: unknown[]) => mockDelete(...args),
+    closeCareEpisode: (...args: unknown[]) => mockClose(...args),
   },
 }));
 
@@ -114,6 +116,14 @@ vi.mock("@/components/ui/label", () => ({
 vi.mock("@/components/ui/select", () => ({
   Select: (props: React.ComponentProps<"select">) => <select {...props} />,
 }));
+vi.mock("@/components/ui/input", () => ({
+  Input: (props: React.ComponentProps<"input">) => <input {...props} />,
+}));
+vi.mock("@/components/ui/textarea", () => ({
+  Textarea: (props: React.ComponentProps<"textarea">) => (
+    <textarea {...props} />
+  ),
+}));
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -157,6 +167,11 @@ function makeDetail(overrides: Partial<CareEpisodeDetail> = {}): CareEpisodeDeta
     workshopId: "w1",
     workshopName: "Lubricentro Central",
     mileageIn: 68500,
+    mileageOut: null,
+    mileageOutUnreadable: false,
+    mileageOutUnreadableReason: null,
+    closeNotes: null,
+    serviceTypes: [],
     customerComplaint: "Ruido al acelerar",
     customerNotes: "Aceite 5W30",
     internalNotes: undefined,
@@ -183,6 +198,16 @@ beforeEach(async () => {
   mockGetDetail.mockResolvedValue(makeDetail());
   mockUpload.mockResolvedValue(makeAttachment({ id: "a1" }));
   mockDelete.mockResolvedValue(undefined);
+  mockClose.mockResolvedValue({
+    data: {
+      id: "e1",
+      status: "delivered",
+      closedAt: "2026-11-17T12:00:00.000Z",
+      mileageOut: 68600,
+      mileageOutUnreadable: false,
+      mileageOutlier: false,
+    },
+  });
   const mod = await import(
     "@/app/(dashboard)/vehicles/[id]/servicios/[servicioId]/page"
   );
@@ -218,7 +243,7 @@ describe("CareEpisode detail page (iteración 2-4)", () => {
     expect(screen.queryByText("Cambio de aceite")).not.toBeInTheDocument();
   });
 
-  it("404 → terminal 'Servicio no encontrado' + Volver al vehículo", async () => {
+  it("404 (PERSONAL) → terminal 'Servicio no encontrado' + Volver al vehículo", async () => {
     mockGetDetail.mockRejectedValue({ status: 404, message: "Not found" });
 
     renderPage();
@@ -230,6 +255,30 @@ describe("CareEpisode detail page (iteración 2-4)", () => {
 
     const back = screen.getByRole("link", { name: /volver al vehículo/i });
     expect(back).toHaveAttribute("href", "/vehicles/v1");
+  });
+
+  it("contexto WORKSHOP → el back-link del header va a /atenciones (Volver a atenciones)", async () => {
+    activeContext = { type: "WORKSHOP", workshopId: "w1" };
+
+    renderPage();
+
+    expect(await screen.findByText("Cambio de aceite")).toBeInTheDocument();
+    const back = screen.getByRole("link", { name: "Volver a atenciones" });
+    expect(back).toHaveAttribute("href", "/atenciones");
+    expect(
+      screen.queryByRole("link", { name: /volver al vehículo/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("contexto WORKSHOP + 404 → la terminal vuelve a /atenciones, no al vehículo", async () => {
+    activeContext = { type: "WORKSHOP", workshopId: "w1" };
+    mockGetDetail.mockRejectedValue({ status: 404, message: "Not found" });
+
+    renderPage();
+
+    expect(await screen.findByText("Servicio no encontrado")).toBeInTheDocument();
+    const back = screen.getByRole("link", { name: /volver a atenciones/i });
+    expect(back).toHaveAttribute("href", "/atenciones");
   });
 
   it("5xx → mensaje de error del servidor + Reintentar refetchea", async () => {
@@ -298,6 +347,66 @@ describe("CareEpisode detail page (iteración 2-4)", () => {
     expect(
       screen.getByText("Sin imágenes de evidencia"),
     ).toBeInTheDocument();
+  });
+
+  // ── Rechazo de verificación (diseño aprobado) ──────────────────────────────
+
+  it("verification 'rejected' → badge 'Rechazado por {taller}' + Callout con motivo", async () => {
+    mockGetDetail.mockResolvedValue(
+      makeDetail({
+        source: "owner",
+        verification: "rejected",
+        rejectionReason: "No consta en nuestros registros",
+        rejectedAt: "2026-09-12T12:00:00.000Z",
+        rejectedByMemberId: "m1",
+      }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText("Cambio de aceite")).toBeInTheDocument();
+
+    // Badge destructivo con el taller; NUNCA los copy de pendiente/verificado.
+    const badge = screen.getByText("Rechazado por Lubricentro Central");
+    expect(badge).toBeInTheDocument();
+    // Rediseño (Design System): el estado pasó a ser un pill TINTADO con el
+    // tono destructivo (`bg-destructive/10` + texto foreground) porque el pill
+    // sólido con texto blanco no llegaba a contraste AA. Se sigue verificando
+    // que el estado de rechazo use el tono destructivo.
+    expect(badge).toHaveClass("bg-destructive/10");
+    expect(
+      screen.queryByText("Registrado por el propietario"),
+    ).not.toBeInTheDocument();
+
+    // Callout explicativo con el motivo entre « ».
+    expect(
+      screen.getByText(
+        /el taller responsable indicó que este servicio no corresponde/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/motivo: «no consta en nuestros registros»/i),
+    ).toBeInTheDocument();
+  });
+
+  it("verification 'rejected' sin motivo → Callout sin la línea 'Motivo:'", async () => {
+    mockGetDetail.mockResolvedValue(
+      makeDetail({
+        source: "owner",
+        verification: "rejected",
+        rejectionReason: null,
+      }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText("Rechazado por Lubricentro Central")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /el taller responsable indicó que este servicio no corresponde/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/motivo:/i)).not.toBeInTheDocument();
   });
 
   it("proyección taller-del-episodio: ve internalNotes, uploader visible y remoción sin motivo (S1/S4/S5)", async () => {
@@ -381,7 +490,7 @@ describe("CareEpisode detail page (iteración 2-4)", () => {
     });
     await user.click(deleteButton);
 
-    const dialog = await screen.findByRole("dialog");
+    await screen.findByRole("dialog");
     const reasonSelect = screen.getByLabelText(/motivo/i);
     expect(reasonSelect).toBeInTheDocument();
 
@@ -513,5 +622,248 @@ describe("CareEpisode detail page (iteración 2-4)", () => {
       expect(mockUpload).toHaveBeenCalledTimes(1);
     });
     expect(mockUpload.mock.calls[0][1].file).toBe(f1);
+  });
+
+  // ── Cierre de atención (B-3) ──────────────────────────────────────────────
+
+  it("sin contexto WORKSHOP o con estado no-open: NO muestra 'Cerrar atención'", async () => {
+    // PERSONAL (dueño): nunca ve la acción de cierre.
+    renderPage();
+    await screen.findByText("Cambio de aceite");
+    expect(
+      screen.queryByRole("button", { name: /cerrar atención/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("taller del episodio + open: botón visible; cerrado: oculto", async () => {
+    activeContext = { type: "WORKSHOP", workshopId: "w1" };
+    mockGetDetail.mockResolvedValueOnce(makeDetail()).mockResolvedValue(
+      makeDetail({ status: "delivered", closedAt: "2026-11-17T12:00:00.000Z" }),
+    );
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await screen.findByText("Cambio de aceite");
+    const closeButton = screen.getByRole("button", {
+      name: /cerrar atención/i,
+    });
+    expect(closeButton).toBeInTheDocument();
+    await user.click(closeButton);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Odómetro de egreso");
+    expect(dialog).toHaveTextContent("Diagnóstico / resumen de la atención");
+    expect(dialog).toHaveTextContent("0/1000 · mínimo 10 caracteres");
+    // Sin datos válidos, el submit está bloqueado.
+    expect(
+      screen.getByRole("button", { name: /confirmar cierre/i }),
+    ).toBeDisabled();
+
+    // El odómetro de ingreso se precarga editable.
+    const kilometraje = screen.getByLabelText("Kilometraje");
+    expect(kilometraje).toHaveValue(68500);
+    expect(dialog).toHaveTextContent(
+      "Odómetro de ingreso: 68.500 km · Dejalo tal cual si no cambió.",
+    );
+    await user.clear(kilometraje);
+    await user.type(kilometraje, "68600");
+    await user.type(
+      screen.getByLabelText(/diagnóstico \/ resumen/i),
+      "Cambio de aceite y filtro, frenos revisados sin novedades.",
+    );
+    await user.click(screen.getByRole("button", { name: /confirmar cierre/i }));
+
+    await waitFor(() => {
+      expect(mockClose).toHaveBeenCalledWith("e1", {
+        mileageOut: 68600,
+        closeNotes:
+          "Cambio de aceite y filtro, frenos revisados sin novedades.",
+      });
+    });
+
+    // Éxito → modal cerrado, refetch → badge "Entregado" y sin botón.
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(await screen.findByText("Entregado")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /cerrar atención/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("muestra 'Diagnóstico / resumen' cuando el episodio cerrado las tiene", async () => {
+    activeContext = { type: "WORKSHOP", workshopId: "w1" };
+    mockGetDetail.mockResolvedValue(
+      makeDetail({
+        status: "delivered",
+        closedAt: "2026-11-17T12:00:00.000Z",
+        closeNotes: "Cambio de aceite y filtro; se reemplazó la batería.",
+      }),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByText("Diagnóstico / resumen"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Cambio de aceite y filtro; se reemplazó la batería."),
+    ).toBeInTheDocument();
+  });
+
+  it("valida el resumen corto y el egreso menor al ingreso antes de enviar", async () => {
+    activeContext = { type: "WORKSHOP", workshopId: "w1" };
+    const user = userEvent.setup();
+
+    renderPage();
+    await screen.findByText("Cambio de aceite");
+    await user.click(
+      screen.getByRole("button", { name: /cerrar atención/i }),
+    );
+
+    const submit = screen.getByRole("button", { name: /confirmar cierre/i });
+    const kilometraje = screen.getByLabelText("Kilometraje");
+    await user.clear(kilometraje);
+    await user.type(kilometraje, "68600");
+    await user.type(
+      screen.getByLabelText(/diagnóstico \/ resumen/i),
+      "Muy corto",
+    );
+    expect(submit).toBeDisabled(); // < 10 caracteres
+
+    await user.type(
+      screen.getByLabelText(/diagnóstico \/ resumen/i),
+      " , frenos revisados sin novedades.",
+    );
+    expect(submit).toBeEnabled();
+
+    // 68000 < mileageIn (68500): el backend devolvería 400, se bloquea acá.
+    const mileageInput = screen.getByLabelText("Kilometraje");
+    await user.clear(mileageInput);
+    await user.type(mileageInput, "68000");
+    expect(submit).toBeDisabled();
+    expect(
+      screen.getByText(/el egreso no puede ser menor al ingreso/i),
+    ).toBeInTheDocument();
+    expect(mockClose).not.toHaveBeenCalled();
+  });
+
+  it("odómetro no legible: avisa la foto 'after' y envía la excepción XOR", async () => {
+    activeContext = { type: "WORKSHOP", workshopId: "w1" };
+    const user = userEvent.setup();
+
+    renderPage();
+    await screen.findByText("Cambio de aceite");
+    await user.click(
+      screen.getByRole("button", { name: /cerrar atención/i }),
+    );
+
+    await user.click(
+      screen.getByLabelText("No se puede leer el odómetro"),
+    );
+
+    // Sin adjuntos 'after' → aviso (el backend lo valida).
+    expect(
+      screen.getByText(/adjuntá una foto del tablero en «evidencias»/i),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Kilometraje")).toBeDisabled();
+    expect(screen.getByLabelText(/motivo \(mínimo 3 caracteres\)/i)).toBeInTheDocument();
+
+    await user.type(
+      screen.getByLabelText(/motivo \(mínimo 3 caracteres\)/i),
+      "Tablero sin display",
+    );
+    await user.type(
+      screen.getByLabelText(/diagnóstico \/ resumen/i),
+      "Se reemplazó el tablero, odómetro no legible al egreso.",
+    );
+    await user.click(screen.getByRole("button", { name: /confirmar cierre/i }));
+
+    await waitFor(() => {
+      expect(mockClose).toHaveBeenCalledWith("e1", {
+        mileageOutUnreadable: true,
+        mileageOutUnreadableReason: "Tablero sin display",
+        closeNotes:
+          "Se reemplazó el tablero, odómetro no legible al egreso.",
+      });
+    });
+  });
+
+  it("409 al cerrar → error inline y el modal sigue abierto", async () => {
+    activeContext = { type: "WORKSHOP", workshopId: "w1" };
+    mockClose.mockRejectedValueOnce({ status: 409, message: "Conflict" });
+    const user = userEvent.setup();
+
+    renderPage();
+    await screen.findByText("Cambio de aceite");
+    await user.click(
+      screen.getByRole("button", { name: /cerrar atención/i }),
+    );
+    const kilometraje409 = screen.getByLabelText("Kilometraje");
+    await user.clear(kilometraje409);
+    await user.type(kilometraje409, "68600");
+    await user.type(
+      screen.getByLabelText(/diagnóstico \/ resumen/i),
+      "Cambio de aceite y filtro, frenos revisados sin novedades.",
+    );
+    await user.click(screen.getByRole("button", { name: /confirmar cierre/i }));
+
+    expect(
+      await screen.findByText("Esta atención ya fue cerrada."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("mileageOutlier en la respuesta → aviso informativo tras el cierre", async () => {
+    activeContext = { type: "WORKSHOP", workshopId: "w1" };
+    mockClose.mockResolvedValueOnce({
+      data: {
+        id: "e1",
+        status: "delivered",
+        closedAt: "2026-11-17T12:00:00.000Z",
+        mileageOut: 68600,
+        mileageOutUnreadable: false,
+        mileageOutlier: true,
+      },
+    });
+    const user = userEvent.setup();
+
+    renderPage();
+    await screen.findByText("Cambio de aceite");
+    await user.click(
+      screen.getByRole("button", { name: /cerrar atención/i }),
+    );
+    // 68600 > mileageIn (68500): válido, pero menor al máximo histórico.
+    const kilometrajeOutlier = screen.getByLabelText("Kilometraje");
+    await user.clear(kilometrajeOutlier);
+    await user.type(kilometrajeOutlier, "68600");
+    await user.type(
+      screen.getByLabelText(/diagnóstico \/ resumen/i),
+      "Cambio de aceite y filtro, frenos revisados sin novedades.",
+    );
+    await user.click(screen.getByRole("button", { name: /confirmar cierre/i }));
+
+    expect(
+      await screen.findByText(/por debajo del máximo histórico/i),
+    ).toBeInTheDocument();
+  });
+
+  it("ingreso ilegible (mileageIn null): no precarga y avisa en el modal", async () => {
+    activeContext = { type: "WORKSHOP", workshopId: "w1" };
+    mockGetDetail.mockResolvedValue(makeDetail({ mileageIn: null }));
+    const user = userEvent.setup();
+
+    renderPage();
+    await screen.findByText("Cambio de aceite");
+    await user.click(
+      screen.getByRole("button", { name: /cerrar atención/i }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(screen.getByLabelText("Kilometraje")).toHaveValue(null);
+    expect(dialog).toHaveTextContent(
+      "No hay odómetro de ingreso legible; ingresá el valor o marcá «No se puede leer».",
+    );
   });
 });

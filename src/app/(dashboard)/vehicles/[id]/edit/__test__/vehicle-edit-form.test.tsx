@@ -3,16 +3,16 @@
  *
  * Critical behaviors (F-011 §7 RF-5/RF-6/RF-7, §10):
  * - GET /api/vehicles/:id prefills the form (plate, VIN, years, color, notes)
- *   and pre-selects the catalog cascade (brand/model/version, RF-5).
+ *   and pre-selects the catalog cascade by NAME (marca → modelo, RF-5).
  * - Submit → PATCH /api/vehicles/:id → invalidate ["vehicles"] + ["vehicle", id]
  *   and redirect to the detail page /vehicles/:id (F-013).
  * - 409 plate conflict → clear field message; form values preserved.
  * - 403 → access denied message; 404 (preload) → "Vehículo no encontrado".
- * - RF-2: clearing the version select omits versionId from the PATCH body
- *   (partial semantics — the existing version is NOT touched).
+ * - Catalog (MVP sin versiones): brandId + modelId travel ONLY when the
+ *   selection changed (always together); clearing the selection omits both
+ *   (no borrado). versionId never travels.
  * - D-043 (RF-8): clearing a prefilled optional text/number field sends
- *   explicit null; an already-empty field is omitted (no noise); versionId
- *   only travels when the user explicitly changed it (never null).
+ *   explicit null; an already-empty field is omitted (no noise).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -32,7 +32,6 @@ const mockGetVehicle = vi.fn();
 const mockUpdateVehicle = vi.fn();
 const mockListBrands = vi.fn();
 const mockListModels = vi.fn();
-const mockListVersions = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   vehicleApi: {
@@ -40,7 +39,6 @@ vi.mock("@/lib/api", () => ({
     updateVehicle: (...args: unknown[]) => mockUpdateVehicle(...args),
     listBrands: (...args: unknown[]) => mockListBrands(...args),
     listModels: (...args: unknown[]) => mockListModels(...args),
-    listVersions: (...args: unknown[]) => mockListVersions(...args),
   },
 }));
 
@@ -98,10 +96,12 @@ function makeVehicleDetail(overrides: VehicleDetailOverrides = {}) {
     licensePlate: "ABC123",
     vin: "WVW123",
     engineNumber: null,
-    versionId: catalog ? "v9" : null,
-    brand: catalog ? "Toyota" : null,
-    model: catalog ? "Corolla" : null,
-    version: catalog ? "XEI" : null,
+    // Legacy: el MVP no usa versiones. El prefill NO debe gatear en versionId.
+    versionId: null,
+    // Minúsculas a propósito: la precarga matchea por nombre case-insensitive.
+    brand: catalog ? "toyota" : null,
+    model: catalog ? "corolla" : null,
+    version: null,
     manufactureYear: 2020,
     modelYear: 2021,
     color: "Rojo",
@@ -116,10 +116,7 @@ function mockCatalogQueries() {
   mockListBrands.mockResolvedValue([{ id: "b1", name: "Toyota" }]);
   mockListModels.mockResolvedValue([
     { id: "m1", brandId: "b1", name: "Corolla" },
-  ]);
-  mockListVersions.mockResolvedValue([
-    { id: "v9", modelId: "m1", name: "XEI" },
-    { id: "v10", modelId: "m1", name: "XEI S" },
+    { id: "m2", brandId: "b1", name: "Corolla Cross" },
   ]);
 }
 
@@ -158,7 +155,7 @@ describe("Vehicle edit form", () => {
 
     renderPage();
 
-    const plate = (await screen.findByLabelText(/placa/i)) as HTMLInputElement;
+    const plate = (await screen.findByLabelText(/patente/i)) as HTMLInputElement;
     expect(plate.value).toBe("ABC123");
     expect((screen.getByLabelText(/vin/i) as HTMLInputElement).value).toBe(
       "WVW123",
@@ -176,7 +173,7 @@ describe("Vehicle edit form", () => {
     );
   });
 
-  it("pre-selects the catalog cascade and submits an explicitly changed versionId (RF-5 + RF-7 + D-043)", async () => {
+  it("pre-selects the catalog by name and sends brandId + modelId only when changed (RF-5 + RF-7)", async () => {
     const user = userEvent.setup();
     mockGetVehicle.mockResolvedValue(makeVehicleDetail());
     mockCatalogQueries();
@@ -184,7 +181,8 @@ describe("Vehicle edit form", () => {
 
     const { invalidateSpy } = renderPage();
 
-    // Prefill resolves brand → model → version from the denormalized names.
+    // Prefill resolves brand → model from the denormalized names (sin gatear
+    // en el versionId legacy, que viene null).
     await waitFor(() => {
       expect((screen.getByLabelText("Marca") as HTMLSelectElement).value).toBe(
         "b1",
@@ -195,23 +193,27 @@ describe("Vehicle edit form", () => {
         "m1",
       );
     });
-    await waitFor(() => {
-      expect((screen.getByLabelText("Versión") as HTMLSelectElement).value).toBe(
-        "v9",
-      );
-    });
 
-    // D-043: versionId solo viaja cuando el usuario CAMBIA la versión.
-    await user.selectOptions(screen.getByLabelText("Versión"), "v10");
+    // El usuario CAMBIA el modelo → viaja el par completo.
+    await user.selectOptions(screen.getByLabelText("Modelo"), "m2");
 
     await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
 
     await waitFor(() => {
       expect(mockUpdateVehicle).toHaveBeenCalledWith(
         "v1",
-        expect.objectContaining({ versionId: "v10", licensePlate: "ABC123" }),
+        expect.objectContaining({
+          brandId: "b1",
+          modelId: "m2",
+          licensePlate: "ABC123",
+        }),
       );
     });
+    const [, payload] = mockUpdateVehicle.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(JSON.stringify(payload)).not.toContain("versionId");
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["vehicles"] });
     });
@@ -226,20 +228,20 @@ describe("Vehicle edit form", () => {
     mockCatalogQueries();
     mockUpdateVehicle.mockRejectedValue({
       status: 409,
-      message: "Ya existe un vehículo registrado con esa placa",
+      message: "Ya existe un vehículo registrado con esa patente",
       code: "VEHICLE_PLATE_EXISTS",
     });
 
     renderPage();
 
-    const plate = (await screen.findByLabelText(/placa/i)) as HTMLInputElement;
+    const plate = (await screen.findByLabelText(/patente/i)) as HTMLInputElement;
     await user.clear(plate);
     await user.type(plate, "XYZ999");
     await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
 
     await waitFor(() => {
       expect(
-        screen.getByText("Ya existe un vehículo registrado con esa placa."),
+        screen.getByText("Ya existe un vehículo registrado con esa patente."),
       ).toBeInTheDocument();
     });
 
@@ -277,7 +279,7 @@ describe("Vehicle edit form", () => {
 
     renderPage();
 
-    await screen.findByLabelText(/placa/i);
+    await screen.findByLabelText(/patente/i);
     await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
 
     expect(
@@ -286,7 +288,7 @@ describe("Vehicle edit form", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it("omits versionId from the PATCH body when the version is cleared (RF-2)", async () => {
+  it("omits brandId/modelId from the PATCH body when the catalog selection is cleared (no borrado)", async () => {
     const user = userEvent.setup();
     mockGetVehicle.mockResolvedValue(makeVehicleDetail());
     mockCatalogQueries();
@@ -295,15 +297,15 @@ describe("Vehicle edit form", () => {
     renderPage();
 
     // Wait for the prefill to resolve the cascade.
-    const versionSelect = (await screen.findByLabelText(
-      "Versión",
+    const modelSelect = (await screen.findByLabelText(
+      "Modelo",
     )) as HTMLSelectElement;
-    await waitFor(() => expect(versionSelect.value).toBe("v9"));
+    await waitFor(() => expect(modelSelect.value).toBe("m1"));
 
-    // User clears the version → "Seleccionar" (value "").
-    await user.selectOptions(versionSelect, "");
+    // User clears the model → "Seleccionar" (value ""): selección incompleta.
+    await user.selectOptions(modelSelect, "");
 
-    const plate = screen.getByLabelText(/placa/i) as HTMLInputElement;
+    const plate = screen.getByLabelText(/patente/i) as HTMLInputElement;
     await user.clear(plate);
     await user.type(plate, "ABC789");
     await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
@@ -315,14 +317,15 @@ describe("Vehicle edit form", () => {
       string,
       Record<string, unknown>,
     ];
-    // RF-2/D-040: versionId va como undefined y JSON.stringify lo omite del
-    // body que el backend recibe → la versión existente no se toca.
-    expect(payload.versionId).toBeUndefined();
-    expect(JSON.stringify(payload)).not.toContain("versionId");
+    // No hay borrado de catálogo: el par incompleto se omite.
+    expect(payload.brandId).toBeUndefined();
+    expect(payload.modelId).toBeUndefined();
+    expect(JSON.stringify(payload)).not.toContain("brandId");
+    expect(JSON.stringify(payload)).not.toContain("modelId");
     expect(payload).toHaveProperty("licensePlate", "ABC789");
   });
 
-  it("sends color: null when the user clears a prefilled optional field and omits versionId (D-043 RF-8)", async () => {
+  it("sends color: null when the user clears a prefilled optional field and omits the catalog (D-043 RF-8)", async () => {
     const user = userEvent.setup();
     mockGetVehicle.mockResolvedValue(makeVehicleDetail());
     mockCatalogQueries();
@@ -346,8 +349,9 @@ describe("Vehicle edit form", () => {
     // D-043: campo vaciado que tenía contenido → null explícito (no omitido).
     expect(payload).toHaveProperty("color", null);
     expect(JSON.stringify(payload)).toContain('"color":null');
-    // La versión no se tocó (prefill v9) → NO viaja versionId (RF-2/D-043).
-    expect(payload.versionId).toBeUndefined();
+    // El catálogo no se tocó (prefill por nombre) → NO viaja (RF-2/D-043).
+    expect(payload).not.toHaveProperty("brandId");
+    expect(payload).not.toHaveProperty("modelId");
     expect(JSON.stringify(payload)).not.toContain("versionId");
     // D-03 (Gap 1): el VIN ya NO se edita por PATCH.
     expect(payload).not.toHaveProperty("vin");
@@ -379,7 +383,7 @@ describe("Vehicle edit form", () => {
     expect(JSON.stringify(payload)).not.toContain('"color"');
   });
 
-  it("submits modified values and omits versionId when the version is unchanged (D-043)", async () => {
+  it("submits modified values and omits the catalog when it is unchanged (D-043)", async () => {
     const user = userEvent.setup();
     mockGetVehicle.mockResolvedValue(makeVehicleDetail());
     mockCatalogQueries();
@@ -387,11 +391,11 @@ describe("Vehicle edit form", () => {
 
     renderPage();
 
-    // Prefill cascade resuelto — la versión original (v9) NO se toca.
-    const versionSelect = (await screen.findByLabelText(
-      "Versión",
+    // Prefill resuelto por nombre — la marca/modelo original NO se tocan.
+    const modelSelect = (await screen.findByLabelText(
+      "Modelo",
     )) as HTMLSelectElement;
-    await waitFor(() => expect(versionSelect.value).toBe("v9"));
+    await waitFor(() => expect(modelSelect.value).toBe("m1"));
 
     const color = screen.getByLabelText(/color/i) as HTMLInputElement;
     await user.clear(color);
@@ -417,8 +421,9 @@ describe("Vehicle edit form", () => {
     expect(payload).toHaveProperty("modelYear", 2021);
     // D-03 (Gap 1): el VIN nunca viaja en el PATCH.
     expect(payload).not.toHaveProperty("vin");
-    // versionId sin cambio → NO viaja (D-043).
-    expect(payload.versionId).toBeUndefined();
+    // Catálogo sin cambios → NO viaja (ni ids ni versión legacy).
+    expect(payload).not.toHaveProperty("brandId");
+    expect(payload).not.toHaveProperty("modelId");
     expect(JSON.stringify(payload)).not.toContain("versionId");
   });
 

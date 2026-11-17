@@ -9,10 +9,16 @@ import type {
   CareEpisodeListResponse,
   CareEpisodeLookupVehicle,
   CareEpisodeVerificationItem,
+  CheckInInput,
+  CheckInResponse,
+  CloseCareEpisodeInput,
+  CloseCareEpisodeResponse,
   CreateCareEpisodeInput,
   CreateOwnerCareEpisodeInput,
   CreateOwnerCareEpisodeResult,
+  RejectCareEpisodeResult,
   RemovedAttachmentReason,
+  ServiceTypesResponse,
 } from "@/types/care-episode";
 import type {
   CreateDealershipInput,
@@ -65,7 +71,9 @@ import type {
   WorkshopBranch,
   WorkshopDetail,
   WorkshopListResponse,
+  WorkshopCatalogResponse,
   WorkshopSearchResult,
+  WorkshopSpecialty,
 } from "@/types/workshop";
 import type {
   CorrectVinInput,
@@ -124,7 +132,10 @@ function apiRelativePath(requestUrl: string): string {
   try {
     const url = new URL(requestUrl);
     const prefixUrl = new URL(apiPrefix);
-    return url.pathname.replace(prefixUrl.pathname.replace(/\/$/, "") + "/", "");
+    return url.pathname.replace(
+      prefixUrl.pathname.replace(/\/$/, "") + "/",
+      "",
+    );
   } catch {
     const marker = "/api/";
     const idx = requestUrl.indexOf(marker);
@@ -330,6 +341,7 @@ export const api = ky.create({
 function normalizeErrorBody(error: HTTPError): {
   message?: string;
   code?: string;
+  errors?: Record<string, unknown>;
 } {
   const data: unknown = error.data;
 
@@ -340,7 +352,11 @@ function normalizeErrorBody(error: HTTPError): {
 
   if (data && typeof data === "object") {
     const record = data as Record<string, unknown>;
-    const normalized: { message?: string; code?: string } = {};
+    const normalized: {
+      message?: string;
+      code?: string;
+      errors?: Record<string, unknown>;
+    } = {};
 
     if (typeof record.message === "string") {
       normalized.message = record.message;
@@ -355,6 +371,10 @@ function normalizeErrorBody(error: HTTPError): {
 
     if (typeof record.code === "string") {
       normalized.code = record.code;
+    }
+
+    if (record.errors && typeof record.errors === "object") {
+      normalized.errors = record.errors as Record<string, unknown>;
     }
 
     return normalized;
@@ -402,17 +422,15 @@ export const authApi = {
       // próximo login (ContextResolver, D-020 / D-TL-12).
       .finally(() => clearActiveContext()),
 
-  me: () =>
-    api
-      .get("auth/me")
-      .json<SessionUser>()
-      .catch(toApiError),
+  me: () => api.get("auth/me").json<SessionUser>().catch(toApiError),
 
   register: (data: {
     firstName: string;
     lastName: string;
     email: string;
     password: string;
+    /** Celular obligatorio (D-173): par área/número, país fijo +54. */
+    phone: { areaCode: string; nationalNumber: string };
   }) =>
     api
       .post("auth/register", { json: data })
@@ -454,13 +472,19 @@ export interface MyAlias {
   nextChangeAllowedAt: string | null;
 }
 
+/** Respuesta 200 de PATCH /users/me (self-service). */
+export interface MyProfile {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  phoneAreaCode: string;
+  phoneNationalNumber: string;
+}
+
 export const usersApi = {
   /** GET /users/me/alias → alias actual + cooldown info. */
-  getMyAlias: () =>
-    api
-      .get("users/me/alias")
-      .json<MyAlias>()
-      .catch(toApiError),
+  getMyAlias: () => api.get("users/me/alias").json<MyAlias>().catch(toApiError),
 
   /**
    * PATCH /users/me/alias → establece, cambia o elimina (null) el alias.
@@ -471,6 +495,18 @@ export const usersApi = {
       .patch("users/me/alias", { json: { alias } })
       .json<MyAlias>()
       .catch(toApiError),
+
+  /**
+   * PATCH /users/me → self-service: nombre, apellido y celular.
+   * `phone`: ausente = no toca; null (o ambos vacíos) = quita; par área+número
+   * (≥2 dígitos tras strip de no-dígitos, país fijo +54) = E.164.
+   * 400: "Ingresá un celular válido (código de área y número)".
+   */
+  updateMyProfile: (input: {
+    firstName?: string;
+    lastName?: string;
+    phone?: { areaCode?: string; nationalNumber?: string } | null;
+  }) => api.patch("users/me", { json: input }).json<MyProfile>().catch(toApiError),
 };
 
 // ---------------------------------------------------------------------------
@@ -504,20 +540,14 @@ export const vehicleApi = {
       .catch(toApiError),
 
   registerVehicle: (input: RegisterVehicleInput) =>
-    api
-      .post("vehicles", { json: input })
-      .json<Vehicle>()
-      .catch(toApiError),
+    api.post("vehicles", { json: input }).json<Vehicle>().catch(toApiError),
 
   /**
    * F-011: GET /api/vehicles/:id → VehicleResponseDto (denormalized).
    * Used to prefill the edit form (RF-5).
    */
   getVehicle: (id: string) =>
-    api
-      .get(`vehicles/${id}`)
-      .json<Vehicle>()
-      .catch(toApiError),
+    api.get(`vehicles/${id}`).json<Vehicle>().catch(toApiError),
 
   /**
    * F-011: PATCH /api/vehicles/:id → VehicleResponseDto.
@@ -542,7 +572,8 @@ export const vehicleApi = {
       .json<Vehicle>()
       .catch(toApiError),
 
-  listBrands: () => api.get("vehicle-brands").json<VehicleBrand[]>().catch(toApiError),
+  listBrands: () =>
+    api.get("vehicle-brands").json<VehicleBrand[]>().catch(toApiError),
 
   listModels: (brandId: string) =>
     api
@@ -866,18 +897,47 @@ export const vehicleApi = {
 // ---------------------------------------------------------------------------
 
 export const careEpisodeApi = {
-  /** F-020 RF-2: busca vehículo por placa EXACTA (normalizada trim+uppercase, D-037/D-042). Sin PII. */
+  /** F-020 RF-2: busca vehículo por patente EXACTA (normalizada trim+uppercase, D-037/D-042). Sin PII. */
   lookupVehicleByPlate: (plate: string) =>
     api
       .get("care-episodes/lookup", { searchParams: { plate } })
       .json<CareEpisodeLookupVehicle>()
       .catch(toApiError),
 
-  /** F-020 RF-1: crea el CareEpisode (check-in). workshopId/createdByMemberId los fija el backend del contexto. */
+  /**
+   * @deprecated F-020 RF-1 (endpoint viejo, recibe `vehicleId`).
+   * El flujo vigente es `checkIn()` (B-2): recibe la patente y resuelve el
+   * vehículo. Se conserva porque el endpoint sigue existiendo en backend.
+   */
   createCareEpisode: (input: CreateCareEpisodeInput) =>
     api
       .post("care-episodes", { json: input })
       .json<CareEpisode>()
+      .catch(toApiError),
+
+  /**
+   * B-2: POST /care-episodes/check-in → check-in unificado de taller.
+   *
+   * Recibe la PATENTE (no `vehicleId`): el backend reutiliza el vehículo si
+   * existe o lo crea SIN titular, y devuelve `vehicleCreated` (fuente de
+   * verdad del mensaje de éxito). Contexto WORKSHOP + permiso
+   * `care-episode.create` (los headers los inyecta el cliente).
+   */
+  checkIn: (input: CheckInInput) =>
+    api
+      .post("care-episodes/check-in", { json: input })
+      .json<CheckInResponse>()
+      .catch(toApiError),
+
+  /**
+   * B-2: GET /care-episodes/service-types → catálogo del check-in filtrado por
+   * las especialidades del taller. Sin especialidades devuelve todo el
+   * catálogo + `onboardingRequired: true` (la UI avisa, no bloquea).
+   */
+  listServiceTypes: () =>
+    api
+      .get("care-episodes/service-types")
+      .json<ServiceTypesResponse>()
       .catch(toApiError),
 
   // -------------------------------------------------------------------------
@@ -961,9 +1021,14 @@ export const careEpisodeApi = {
     options: { removedReason?: RemovedAttachmentReason } = {},
   ) =>
     api
-      .delete(`care-episodes/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`, {
-        ...(options.removedReason ? { json: { removedReason: options.removedReason } } : {}),
-      })
+      .delete(
+        `care-episodes/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`,
+        {
+          ...(options.removedReason
+            ? { json: { removedReason: options.removedReason } }
+            : {}),
+        },
+      )
       .then(() => undefined as void)
       .catch(toApiError),
 
@@ -1016,13 +1081,16 @@ export const careEpisodeApi = {
       .json<CareEpisodeVerificationItem[]>()
       .catch(toApiError),
 
-  /** F-023 RF-1: GET /care-episodes → listado paginado del taller del contexto WORKSHOP (sin PII). */
+  /** F-023 RF-1: GET /care-episodes → listado paginado del taller del contexto WORKSHOP (sin PII). Filtro único por patente `q` (D-F023-1a). */
   listCareEpisodes: ({
     page = 1,
     limit = 20,
-  }: { page?: number; limit?: number } = {}) =>
+    q,
+  }: { page?: number; limit?: number; q?: string } = {}) =>
     api
-      .get("care-episodes", { searchParams: { page, limit } })
+      .get("care-episodes", {
+        searchParams: { page, limit, ...(q ? { q } : {}) },
+      })
       .json<CareEpisodeListResponse>()
       .catch(toApiError),
 
@@ -1031,6 +1099,37 @@ export const careEpisodeApi = {
     api
       .post(`care-episodes/${id}/verify`)
       .json<CareEpisode>()
+      .catch(toApiError),
+
+  /**
+   * Rechazo de verificación (diseño aprobado): POST /care-episodes/:id/reject
+   * → 200 `{ id, verification: 'rejected', rejectedByMemberId, rejectedAt,
+   * rejectionReason }`. Body `{ reason?: string }` opcional (≤500). Contexto
+   * WORKSHOP. Errores: 403 (sin permiso / source=workshop), 404 (ajeno/
+   * inexistente), 409 (ya verified u otro estado terminal).
+   */
+  rejectCareEpisode: (id: string, reason?: string) =>
+    api
+      .post(`care-episodes/${id}/reject`, { json: { reason } })
+      .json<RejectCareEpisodeResult>()
+      .catch(toApiError),
+
+  /**
+   * B-3: POST /care-episodes/:id/close → transición `open → delivered`
+   * (contexto WORKSHOP + permiso `care-episode.close`; headers los inyecta
+   * `injectActiveContextHeaders`). El body es EXACTAMENTE `CloseCareEpisodeInput`
+   * — no se agregan campos (los tipos de atención son aditivos y el MVP no
+   * envía `serviceTypeIds`: el check-in ya cargó ≥1).
+   *
+   * Errores: 403 (sin permiso/contexto), 404 (episodio ajeno), 409 (ya
+   * cerrada), 400 (XOR del odómetro, `closeNotes`, foto `after` faltante,
+   * egreso < ingreso). `mileageOut < máximo histórico` NO es error: viene en
+   * `response.data.mileageOutlier`.
+   */
+  closeCareEpisode: (id: string, input: CloseCareEpisodeInput) =>
+    api
+      .post(`care-episodes/${id}/close`, { json: input })
+      .json<CloseCareEpisodeResponse>()
       .catch(toApiError),
 };
 
@@ -1062,17 +1161,11 @@ export const workshopApi = {
    * nunca es frontera de seguridad.
    */
   listMine: () =>
-    api
-      .get("workshops")
-      .json<WorkshopListResponse>()
-      .catch(toApiError),
+    api.get("workshops").json<WorkshopListResponse>().catch(toApiError),
 
   /** GET /workshops/:id → WorkshopResponseDto (branches activas, sede primero). */
   getWorkshop: (id: string) =>
-    api
-      .get(`workshops/${id}`)
-      .json<WorkshopDetail>()
-      .catch(toApiError),
+    api.get(`workshops/${id}`).json<WorkshopDetail>().catch(toApiError),
 
   /**
    * PATCH /workshops/:id → `UpdateWorkshopDto`.
@@ -1101,12 +1194,78 @@ export const workshopApi = {
       .json<WorkshopBranch>()
       .catch(toApiError),
 
+  // -------------------------------------------------------------------------
+  // Especialidades del taller (auto-servicio "Mi taller", pestaña
+  // Especialidades). Cuatro endpoints YA existentes en backend:
+  // - GET    /workshops/:id/specialties        → WorkshopGuard (cualquier
+  //   miembro activo lee; sin permiso puntual).
+  // - POST   /workshops/:id/specialties        {specialtyId} → alta;
+  // - DELETE /workshops/:id/specialties/:id    → baja; ambos con
+  //   `workshop.specialties.manage` (seedeado al rol `owner` del taller).
+  // - GET    /specialties (PublicWorkshopController, `@Controller()` SIN
+  //   prefijo `workshops` — verificado en backend) → catálogo público para
+  //   el selector de alta. JwtAuthGuard: requiere sesión, no membresía.
+  //
+  // La API es por especialidad individual (POST/DELETE), no un upsert
+  // batch: el multiselect de la UI sincroniza altas/bajas una a una.
+  // -------------------------------------------------------------------------
+
+  /** GET /workshops/:id/specialties → especialidades cargadas (WorkshopGuard). */
+  listSpecialties: (workshopId: string) =>
+    api
+      .get(`workshops/${workshopId}/specialties`)
+      .json<WorkshopSpecialty[]>()
+      .catch(toApiError),
+
+  /** GET /specialties → catálogo público de especialidades disponibles. */
+  listSpecialtyCatalog: () =>
+    api.get("specialties").json<WorkshopSpecialty[]>().catch(toApiError),
+
+  /** POST /workshops/:id/specialties → alta (`workshop.specialties.manage`). */
+  addSpecialty: (workshopId: string, specialtyId: string) =>
+    api
+      .post(`workshops/${workshopId}/specialties`, { json: { specialtyId } })
+      .json<WorkshopSpecialty>()
+      .catch(toApiError),
+
+  /**
+   * DELETE /workshops/:id/specialties/:specialtyId → baja
+   * (`workshop.specialties.manage`). El handler no devuelve body: se
+   * descarta la respuesta para no parsear un 200 vacío (mismo patrón que
+   * `dealershipApi.removeMember`).
+   */
+  removeSpecialty: (workshopId: string, specialtyId: string) =>
+    api
+      .delete(`workshops/${workshopId}/specialties/${specialtyId}`)
+      .then(() => undefined as void)
+      .catch(toApiError),
+
   /**
    * Iteración 2-2 RF-3: búsqueda pública acotada de talleres para el
    * propietario (autenticado, SIN membresía). El debounce (≥2 chars) se
    * resuelve en la UI, no acá. Sin match → `[]`; `q` de 1 char → 400;
    * throttle 30/60s → 429.
    */
+  /**
+   * Iteración "Taller responsable" 3 — RF-8: catálogo público acotado y
+   * PAGINADO de talleres activos (autenticado, SIN membresía), espejo de
+   * `/workshops/search` pero con envelope `{ data, meta }` page-based para
+   * carga incremental en el bottom sheet. PII mínima `{id, name, logoUrl?, city}`.
+   * Sin `q` → catálogo completo (orden alfabético); `q` de 1 char → 400;
+   * throttle 30/60s → 429. El debounce y la paginación se resuelven en la UI.
+   */
+  listCatalog: ({
+    q,
+    page = 1,
+    limit = 10,
+  }: { q?: string; page?: number; limit?: number } = {}) =>
+    api
+      .get("workshops/catalog", {
+        searchParams: { page, limit, ...(q ? { q } : {}) },
+      })
+      .json<WorkshopCatalogResponse>()
+      .catch(toApiError),
+
   searchWorkshops: (q: string) =>
     api
       .get("workshops/search", { searchParams: { q } })
@@ -1139,10 +1298,7 @@ export const dealershipApi = {
 
   /** GET /dealerships/:id → detalle (admin/miembro). */
   get: (id: string) =>
-    api
-      .get(`dealerships/${id}`)
-      .json<Dealership>()
-      .catch(toApiError),
+    api.get(`dealerships/${id}`).json<Dealership>().catch(toApiError),
 
   /** PATCH /dealerships/:id → editar perfil (admin). */
   update: (id: string, input: UpdateDealershipInput) =>
@@ -1180,11 +1336,7 @@ export const dealershipApi = {
       .catch(toApiError),
 
   /** PATCH /dealerships/:id/members/:memberId/role → cambio de rol (admin). */
-  updateMemberRole: (
-    dealershipId: string,
-    memberId: string,
-    roleId: string,
-  ) =>
+  updateMemberRole: (dealershipId: string, memberId: string, roleId: string) =>
     api
       .patch(`dealerships/${dealershipId}/members/${memberId}/role`, {
         json: { roleId },
@@ -1458,10 +1610,7 @@ export const adminApi = {
    * (P7). NOTA Fase 1 backend: endpoint comprometido en el handoff PM, aún no
    * implementado en el controller (404 hasta que se entregue).
    */
-  updateDealership: (
-    dealershipId: string,
-    input: UpdateAdminDealershipInput,
-  ) =>
+  updateDealership: (dealershipId: string, input: UpdateAdminDealershipInput) =>
     api
       .patch(`admin/dealerships/${encodeURIComponent(dealershipId)}`, {
         json: input,
@@ -1598,8 +1747,5 @@ export const adminApi = {
 
   /** GET /admin/roles → roles de sistema (resuelve roleType → roleId). */
   listRoles: () =>
-    api
-      .get("admin/roles")
-      .json<AdminSystemRoleItem[]>()
-      .catch(toApiError),
+    api.get("admin/roles").json<AdminSystemRoleItem[]>().catch(toApiError),
 };

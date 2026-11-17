@@ -35,13 +35,13 @@ export default function NewVehiclePage() {
   const { refreshSession } = useAuth();
   const activeContext = useActiveContext();
 
-  // D-07 (Gap 1): the "kilometraje inicial" is a DEALERSHIP-only concept
-  // (alta de 0 km por concesionaria). In PERSONAL the field is not rendered.
+  // D-07 (Gap 1): in DEALERSHIP "kilometraje inicial" is mandatory (alta de
+  // 0 km por concesionaria). D-206: in PERSONAL it is optional ("kilometraje
+  // actual") — el usuario está registrando su propio vehículo y conoce el dato.
   const isDealership = activeContext?.type === "DEALERSHIP";
 
   const [selectedBrandId, setSelectedBrandId] = useState("");
   const [selectedModelId, setSelectedModelId] = useState("");
-  const [selectedVersionId, setSelectedVersionId] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
@@ -53,7 +53,8 @@ export default function NewVehiclePage() {
     resolver: zodResolver(vehicleFormSchema),
   });
 
-  // Catalog cascade (D-038): brands on mount; models/versions on demand (RF-4).
+  // Catalog cascade (D-038): marca → modelo (MVP sin versiones). Brands on
+  // mount; models on demand (RF-4).
   const brandsQuery = useQuery({
     queryKey: ["vehicle-brands"],
     queryFn: vehicleApi.listBrands,
@@ -65,21 +66,13 @@ export default function NewVehiclePage() {
     enabled: selectedBrandId !== "",
   });
 
-  const versionsQuery = useQuery({
-    queryKey: ["vehicle-versions", selectedModelId],
-    queryFn: () => vehicleApi.listVersions(selectedModelId),
-    enabled: selectedModelId !== "",
-  });
-
   const handleBrandChange = (value: string) => {
     setSelectedBrandId(value);
     setSelectedModelId("");
-    setSelectedVersionId("");
   };
 
   const handleModelChange = (value: string) => {
     setSelectedModelId(value);
-    setSelectedVersionId("");
   };
 
   const onSubmit = async (data: VehicleFormValues) => {
@@ -97,7 +90,10 @@ export default function NewVehiclePage() {
 
     try {
       await vehicleApi.registerVehicle(
-        toVehicleInput(data, selectedVersionId, isDealership),
+        toVehicleInput(data, {
+          brandId: selectedBrandId,
+          modelId: selectedModelId,
+        }),
       );
 
       // Contexto activo al momento del éxito (se lee ANTES del refresh de
@@ -233,48 +229,47 @@ export default function NewVehiclePage() {
                 </div>
               }
               initialMileageSlot={
-                isDealership ? (
-                  <div className="grid gap-2">
-                    <Label htmlFor="initialMileage">Kilometraje inicial</Label>
-                    <Input
-                      id="initialMileage"
-                      inputMode="numeric"
-                      placeholder="Ej. 0"
-                      autoComplete="off"
-                      aria-invalid={!!errors.initialMileage}
-                      {...register("initialMileage")}
-                    />
-                    {errors.initialMileage ? (
-                      <p className="text-sm text-destructive" role="alert">
-                        {errors.initialMileage.message}
-                      </p>
-                    ) : (
-                      <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                        Para altas de 0 km desde una concesionaria. Se registra
-                        como el primer kilometraje del vehículo.
-                      </p>
-                    )}
-                  </div>
-                ) : undefined
+                <div className="grid gap-2">
+                  <Label htmlFor="initialMileage">
+                    {isDealership
+                      ? "Kilometraje inicial"
+                      : "Kilometraje actual (opcional)"}
+                  </Label>
+                  <Input
+                    id="initialMileage"
+                    inputMode="numeric"
+                    placeholder={isDealership ? "Ej. 0" : "Ej. 85000"}
+                    autoComplete="off"
+                    aria-invalid={!!errors.initialMileage}
+                    {...register("initialMileage")}
+                  />
+                  {errors.initialMileage ? (
+                    <p className="text-sm text-destructive" role="alert">
+                      {errors.initialMileage.message}
+                    </p>
+                  ) : (
+                    <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      {isDealership
+                        ? "Para altas de 0 km desde una concesionaria. Se registra como el primer kilometraje del vehículo."
+                        : "Los kilómetros que marca el tablero hoy. Se guarda como la primera lectura de la historia del vehículo; si no lo sabés, dejalo vacío y podés cargarlo más adelante."}
+                    </p>
+                  )}
+                </div>
               }
               catalog={{
                 selectedBrandId,
                 selectedModelId,
-                selectedVersionId,
                 brands: brandsQuery.data,
                 models: modelsQuery.data,
-                versions: versionsQuery.data,
                 modelsLoading: modelsQuery.isLoading,
-                versionsLoading: versionsQuery.isLoading,
                 brandsError: brandsQuery.isError,
                 onBrandChange: handleBrandChange,
                 onModelChange: handleModelChange,
-                onVersionChange: (value) => setSelectedVersionId(value),
                 description:
-                  "Si seleccionás marca, modelo y versión, el vehículo se guarda con esos datos del catálogo.",
+                  "Si seleccionás marca y modelo, el vehículo se guarda con esos datos del catálogo.",
                 errorHint:
-                  "No se pudo cargar el catálogo. Podés registrarlo sin marca/modelo/versión.",
+                  "No se pudo cargar el catálogo. Podés registrarlo sin marca/modelo.",
               }}
             />
           </CardContent>

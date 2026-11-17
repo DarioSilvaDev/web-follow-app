@@ -19,19 +19,34 @@
  * - claimed → §2.7 · manual_review → §2.8 · claim_blocked → §2.9
  * - sin invite → §2.1 · link recién generado (con `link`) → §2.2
  *
+ * §2.6 (vehículo ya con titular): si `vehicleHasActiveOwner` (dato aditivo del
+ * detalle del episodio, D-TL-VC-9 regla 2) o el create rebota con 409 "ya tiene
+ * titular", §2.1 muestra sólo el aviso y oculta "Generar link de reclamo".
+ *
  * Permisos UX (la autoridad es el backend): `vehicle-claim.list` para ver el
  * panel, `.create` / `.revoke` / `.review` por acción (CTAs ocultos si falta).
  * Errores → copy §2.14, nunca el mensaje crudo del backend.
+ *
+ * Presentación (mejora UX, copy §2 intacto):
+ * - §2.2: campo link como `Input` readonly con label + `title` (la URL nunca
+ *   desborda; se selecciona con un click) y feedback `¡Copiado!` con
+ *   `aria-live`. El QR preview convive con el link (lado a lado en sm+,
+ *   apilado en chico) y sus errores ya se ven también en §2.2.
+ * - §2.3: estado (badge + vencimiento) arriba; QR y acciones lado a lado en
+ *   sm+, apilados en chico.
+ * - El label visible "Link de reclamo" es chrome de campo (aditivo al spec
+ *   §2.2, que sólo fija el copy de CTA/microcopy).
  */
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Check,
   Copy,
   Download,
   Loader2,
   MessageCircle,
-  RefreshCw,
   RotateCw,
+  TriangleAlert,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,6 +58,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogClose,
@@ -84,6 +101,7 @@ export function ClaimInvitePanel({
   careEpisodeId,
   licensePlate: episodePlate,
   workshopId,
+  vehicleHasActiveOwner = false,
 }: {
   vehicleId: string;
   careEpisodeId: string;
@@ -94,6 +112,14 @@ export function ClaimInvitePanel({
    * montaje contra el contexto activo nunca matchea y el panel no se pinta).
    */
   workshopId: string | null;
+  /**
+   * `detail.vehicle.hasActiveOwner` del episodio (contrato aditivo D-TL-VC-9
+   * regla 2, copy §2.6): el vehículo ya tiene titular. En §2.1 se muestra sólo
+   * el aviso de "ya tiene titular" y NO se ofrece "Generar link de reclamo"
+   * (el backend responde 409 `active_owner`). Omitido/false en deploys viejos
+   * del backend → se mantiene el CTA.
+   */
+  vehicleHasActiveOwner?: boolean;
 }) {
   const activeContext = useActiveContext();
   const { user } = useAuth();
@@ -267,6 +293,17 @@ export function ClaimInvitePanel({
     return null;
   }
 
+  // Preferencia de producto: si el vehículo ya tiene titular (dato del detalle
+  // del episodio, D-TL-VC-9 regla 2), la tarjeta no se muestra en absoluto.
+  // Se evita también el flash del spinner mientras carga la lista. El caso
+  // defensivo (POST create → 409 "ya tiene titular", p.ej. vehículo de taller
+  // transferido después) sigue mostrando §2.6 para que el fallo no sea
+  // silencioso.
+  if (vehicleHasActiveOwner === true) {
+    if (listQuery.isLoading) return null;
+    if (!invite) return null;
+  }
+
   const header = (
     <CardHeader>
       <CardTitle>Reclamo del vehículo</CardTitle>
@@ -339,11 +376,24 @@ export function ClaimInvitePanel({
 
   // ── §2.1 sin invite ──
   if (!invite) {
+    // Preferencia de producto: si el vehículo ya tiene titular (dato del detalle
+    // del episodio, D-TL-VC-9 regla 2), la tarjeta de reclamo no se muestra en
+    // absoluto — no hay CTA válido. El caso defensivo (POST create → 409
+    // "ya tiene titular", p.ej. vehículo de taller transferido después) sigue
+    // mostrando §2.6 para que el fallo no sea silencioso.
+    if (vehicleHasActiveOwner === true) {
+      return null;
+    }
+
+    // §2.6: el create acaba de rebotar con 409 "ya tiene titular" (`alreadyTaken`).
+    // En ese caso se muestra sólo el aviso y se oculta el CTA.
+    const alreadyHasOwner = alreadyTaken;
+
     return (
       <Card>
         {header}
         <CardContent className="grid gap-3">
-          {alreadyTaken && (
+          {alreadyHasOwner && (
             <div className="grid gap-1">
               <Callout variant="info" role="status">
                 {CLAIM_PANEL_ALREADY_TAKEN}
@@ -358,31 +408,35 @@ export function ClaimInvitePanel({
               {createError}
             </Callout>
           )}
-          <div className="grid gap-1">
-            <p className="text-sm">
-              Este vehículo todavía no tiene un link de reclamo.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              El dueño va a poder ver el historial completo después de verificar
-              que el vehículo es suyo.
-            </p>
-          </div>
-          {canCreate && (
-            <Button
-              type="button"
-              disabled={createMutation.isPending}
-              aria-busy={createMutation.isPending}
-              onClick={() => createMutation.mutate()}
-            >
-              {createMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generando…
-                </>
-              ) : (
-                "Generar link de reclamo"
+          {!alreadyHasOwner && (
+            <>
+              <div className="grid gap-1">
+                <p className="text-sm">
+                  Este vehículo todavía no tiene un link de reclamo.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  El dueño va a poder ver el historial completo después de
+                  verificar que el vehículo es suyo.
+                </p>
+              </div>
+              {canCreate && (
+                <Button
+                  type="button"
+                  disabled={createMutation.isPending}
+                  aria-busy={createMutation.isPending}
+                  onClick={() => createMutation.mutate()}
+                >
+                  {createMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generando…
+                    </>
+                  ) : (
+                    "Generar link de reclamo"
+                  )}
+                </Button>
               )}
-            </Button>
+            </>
           )}
         </CardContent>
       </Card>
@@ -393,54 +447,99 @@ export function ClaimInvitePanel({
   // Tiene prioridad sobre el detalle: no depende de `GET :id` y evita un
   // flash de loading mientras la lista/detalle se invalidan.
   if (freshLink) {
+    const freshPlate = freshLink.licensePlate || episodePlate;
     return (
       <Card>
         {header}
         <CardContent className="grid gap-4">
-          <Callout variant="warning" role="status">
+          {qrError && (
+            <Callout variant="destructive" role="alert" icon={TriangleAlert}>
+              {qrError}
+            </Callout>
+          )}
+
+          <Callout variant="warning" role="status" icon={TriangleAlert}>
             Guardá o compartí el link ahora. Por seguridad, no se vuelve a
             mostrar.
           </Callout>
 
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
-            <p className="min-w-0 flex-1 truncate font-mono text-xs">
-              {freshLink.link}
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleCopy}
-            >
-              {copied ? (
-                <>
-                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                  ¡Copiado!
-                </>
-              ) : (
-                <>
-                  <Copy className="mr-1.5 h-3.5 w-3.5" />
-                  Copiar enlace
-                </>
-              )}
-            </Button>
-          </div>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            {/* Columna principal: link + acciones */}
+            <div className="grid min-w-0 flex-1 gap-3">
+              <div className="grid gap-1.5">
+                <Label
+                  htmlFor="claim-invite-link"
+                  className="text-xs text-muted-foreground"
+                >
+                  Link de reclamo
+                </Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    id="claim-invite-link"
+                    readOnly
+                    value={freshLink.link ?? ""}
+                    title={freshLink.link ?? undefined}
+                    onFocus={(event) => event.currentTarget.select()}
+                    className="min-w-0 grow basis-56 font-mono"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopy}
+                    className="shrink-0"
+                  >
+                    {copied ? (
+                      <Check
+                        className="mr-1.5 h-3.5 w-3.5"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Copy
+                        className="mr-1.5 h-3.5 w-3.5"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span aria-live="polite">
+                      {copied ? "¡Copiado!" : "Copiar enlace"}
+                    </span>
+                  </Button>
+                </div>
+              </div>
 
-          <div className="flex flex-wrap gap-2">
-            {freshLink.whatsappUrl && (
-              <Button type="button" onClick={handleWhatsApp}>
-                <MessageCircle className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                Enviar por WhatsApp
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {freshLink.whatsappUrl && (
+                  <Button type="button" onClick={handleWhatsApp}>
+                    <MessageCircle
+                      className="mr-1.5 h-4 w-4"
+                      aria-hidden="true"
+                    />
+                    Enviar por WhatsApp
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant={freshLink.whatsappUrl ? "outline" : "default"}
+                  onClick={() => void handleDownloadQr(freshLink.qrImageUrl)}
+                >
+                  <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                  Descargar QR
+                </Button>
+              </div>
+            </div>
+
+            {/* QR al lado del link en sm+; debajo en chico */}
+            {freshLink.qrImageUrl && (
+              <div className="flex shrink-0 justify-center sm:justify-start">
+                {/* eslint-disable-next-line @next/next/no-img-element -- URL firmada de R2 que caduca: next/image no sirve para QR efímeros (mismo criterio que evidence-gallery) */}
+                <img
+                  src={freshLink.qrImageUrl}
+                  alt={`Código QR del link de reclamo de ${freshPlate}`}
+                  className="h-40 w-40 rounded-lg border border-border bg-white p-2"
+                  onError={() => setQrError(CLAIM_PANEL_QR_ERROR)}
+                />
+              </div>
             )}
-            <Button
-              type="button"
-              variant={freshLink.whatsappUrl ? "outline" : "default"}
-              onClick={() => void handleDownloadQr(freshLink.qrImageUrl)}
-            >
-              <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              Descargar QR
-            </Button>
           </div>
 
           <p className="text-xs text-muted-foreground">
@@ -634,29 +733,6 @@ export function ClaimInvitePanel({
     </>
   );
 
-  const qrBlock = (url: string | null) => (
-    <>
-      {qrError && (
-        <Callout variant="destructive" role="alert">
-          {qrError}
-        </Callout>
-      )}
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- URL firmada de R2 que caduca: next/image no sirve para QR efímeros (mismo criterio que evidence-gallery)
-        <img
-          src={url}
-          alt={`Código QR del link de reclamo de ${plate}`}
-          className="mx-auto h-40 w-40 rounded-lg border border-border bg-white p-2"
-          onError={() => setQrError(CLAIM_PANEL_QR_ERROR)}
-        />
-      ) : !qrError ? (
-        <Callout variant="destructive" role="alert">
-          {CLAIM_PANEL_QR_ERROR}
-        </Callout>
-      ) : null}
-    </>
-  );
-
   const status = detail.status;
   const isAutoRevoked = status === "revoked" && detail.revokeReason === "max_attempts";
 
@@ -845,42 +921,68 @@ export function ClaimInvitePanel({
       {header}
       <CardContent className="grid gap-4">
         {createErrorCallout}
-        <div className="flex items-center gap-2">
+
+        {qrError && (
+          <Callout variant="destructive" role="alert" icon={TriangleAlert}>
+            {qrError}
+          </Callout>
+        )}
+        {!detail.qrImageUrl && !qrError && (
+          <Callout variant="destructive" role="alert" icon={TriangleAlert}>
+            {CLAIM_PANEL_QR_ERROR}
+          </Callout>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant="success">Vigente</Badge>
           <span className="text-sm text-muted-foreground">
             Vence el {formatDate(detail.expiresAt)}.
           </span>
         </div>
 
-        {qrBlock(detail.qrImageUrl)}
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void handleDownloadQr(detail.qrImageUrl)}
-          >
-            <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Descargar QR
-          </Button>
-          {canRevoke && (
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => {
-                setDialogError(null);
-                setDialog("revoke");
-              }}
-            >
-              Revocar link
-            </Button>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          {detail.qrImageUrl && (
+            <div className="flex shrink-0 justify-center sm:justify-start">
+              {/* eslint-disable-next-line @next/next/no-img-element -- URL firmada de R2 que caduca: next/image no sirve para QR efímeros (mismo criterio que evidence-gallery) */}
+              <img
+                src={detail.qrImageUrl}
+                alt={`Código QR del link de reclamo de ${plate}`}
+                className="h-40 w-40 rounded-lg border border-border bg-white p-2"
+                onError={() => setQrError(CLAIM_PANEL_QR_ERROR)}
+              />
+            </div>
           )}
-        </div>
 
-        <p className="text-xs text-muted-foreground">
-          Por seguridad, el link no se vuelve a mostrar. Compartí el QR o
-          revocá el link para generar uno nuevo.
-        </p>
+          <div className="grid min-w-0 flex-1 gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleDownloadQr(detail.qrImageUrl)}
+              >
+                <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                Descargar QR
+              </Button>
+              {canRevoke && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => {
+                    setDialogError(null);
+                    setDialog("revoke");
+                  }}
+                >
+                  Revocar link
+                </Button>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Por seguridad, el link no se vuelve a mostrar. Compartí el QR o
+              revocá el link para generar uno nuevo.
+            </p>
+          </div>
+        </div>
       </CardContent>
 
       {dialogs}

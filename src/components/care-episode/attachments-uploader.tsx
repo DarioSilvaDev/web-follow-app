@@ -39,6 +39,12 @@ export interface AttachmentsUploaderProps {
   disabled?: boolean;
   /** Por cada upload exitoso (la página invalida ["care-episode", id]). */
   onUploaded?: (attachment: CareEpisodeAttachment) => void;
+  /**
+   * Por cada upload fallido. Permite al consumidor ofrecer una salida
+   * ("cargarla después") cuando el adjunto es obligatorio, sin acoplarse a los
+   * items internos. El Reintentar por archivo sigue viviendo acá.
+   */
+  onUploadError?: (error: unknown) => void;
 }
 
 export interface UploadItem {
@@ -71,6 +77,7 @@ export function AttachmentsUploader({
   existingCount = 0,
   disabled = false,
   onUploaded,
+  onUploadError,
 }: AttachmentsUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const itemsRef = useRef<UploadItem[]>([]);
@@ -151,6 +158,7 @@ export function AttachmentsUploader({
           status: "error",
           error: resolveAttachmentUploadErrorMessage(error),
         }));
+        onUploadError?.(error);
       }
     }
     setUploading(false);

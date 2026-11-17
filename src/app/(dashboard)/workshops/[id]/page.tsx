@@ -7,10 +7,12 @@
  * El endpoint exige membresía activa en el backend; acá solo se refleja el 403
  * como estado — la UI nunca es frontera de seguridad (AGENTS.md §20/§22).
  *
- * Alcance de esta iteración: pestañas **Datos** y **Sucursales**. Las secciones
- * Equipo y Especialidades NO se renderizan: sus permisos (`workshop.roles.*`,
- * `workshop.specialties.manage`) están declarados en el backend pero ausentes
- * del seed, por lo que darían 403 garantizado (ver `BE-001`).
+ * Alcance: pestañas **Datos**, **Sucursales** y **Especialidades**. La sección
+ * Equipo sigue sin renderizarse (`workshop.roles.*` queda fuera de alcance).
+ * `workshop.specialties.manage` SÍ existe hoy en el seed (BE-001 resuelto para
+ * este código — verificado en `api-follow-app/prisma/seed.ts` y su spec de
+ * consistencia), por lo que la pestaña Especialidades se habilita con el gate
+ * de UX `canInWorkshop` y reacciona igual al 403 real (PROD-003 / FR-004).
  *
  * El header también expone los CTAs de atenciones (`/atenciones/nueva`,
  * `/atenciones` y `/atenciones/verificaciones`): sin ellos la página era un
@@ -25,16 +27,18 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardCheck, FileText, RefreshCw, Store, Wrench } from "lucide-react";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkshopBranchesSection } from "@/components/workshop/workshop-branches-section";
 import { WorkshopCompletenessCard } from "@/components/workshop/workshop-completeness-card";
 import { WorkshopProfileForm } from "@/components/workshop/workshop-profile-form";
+import { WorkshopSpecialtiesSection } from "@/components/workshop/workshop-specialties-section";
 import { workshopApi } from "@/lib/api";
 import { resolveWorkshopDetailError } from "@/lib/workshop-errors";
+import { typeScale } from "@/components/ui/type-scale";
 
 export default function WorkshopDetailPage() {
   const params = useParams<{ id: string }>();
@@ -102,11 +106,11 @@ export default function WorkshopDetailPage() {
             <CardHeader>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-muted text-muted-foreground">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-card border bg-muted text-muted-foreground">
                     <Store className="h-5 w-5" />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <h1 className="text-2xl font-bold tracking-tight">
+                    <h1 className={`font-heading font-semibold tracking-tight ${typeScale.display}`}>
                       {workshop.name}
                     </h1>
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
@@ -117,11 +121,9 @@ export default function WorkshopDetailPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2 pt-1 text-xs">
-                      <Badge
-                        variant={workshop.isActive ? "success" : "secondary"}
-                      >
-                        {workshop.isActive ? "Activo" : "Inactivo"}
-                      </Badge>
+                      <StatusBadge
+                        status={workshop.isActive ? "active" : "inactive"}
+                      />
                     </div>
                   </div>
                 </div>
@@ -129,7 +131,7 @@ export default function WorkshopDetailPage() {
                   <Link href="/atenciones/nueva">
                     <Button className="min-h-11 px-5">
                       <Wrench className="mr-1.5" aria-hidden="true" />
-                      Registrar atención
+                      Registrar servicio
                     </Button>
                   </Link>
                   <Link href="/atenciones">
@@ -158,6 +160,7 @@ export default function WorkshopDetailPage() {
             <TabsList>
               <TabsTrigger value="datos">Datos</TabsTrigger>
               <TabsTrigger value="sucursales">Sucursales</TabsTrigger>
+              <TabsTrigger value="especialidades">Especialidades</TabsTrigger>
             </TabsList>
             <TabsContent value="datos" className="pt-3">
               <Card>
@@ -176,6 +179,16 @@ export default function WorkshopDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <WorkshopBranchesSection workshop={workshop} />
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="especialidades" className="pt-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Especialidades</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <WorkshopSpecialtiesSection workshop={workshop} />
                 </CardContent>
               </Card>
             </TabsContent>

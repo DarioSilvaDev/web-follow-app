@@ -96,7 +96,7 @@ export type TransferFormValues = z.infer<typeof transferFormSchema>;
 interface TransferDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Modo detalle: vehículo fijo (solo id + placa). */
+  /** Modo detalle: vehículo fijo (solo id + patente). */
   vehicle?: { id: string; licensePlate: string } | null;
   /** Modo panel: vehículos de propiedad del usuario (selector). */
   vehicles?: Vehicle[];

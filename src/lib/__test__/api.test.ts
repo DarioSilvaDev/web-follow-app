@@ -183,8 +183,14 @@ describe("API client — refresh interceptor", () => {
 
     // Fire two concurrent requests
     const [r1, r2] = await Promise.all([
-      api.get("workshops").json().catch(() => null),
-      api.get("profile").json().catch(() => null),
+      api
+        .get("workshops")
+        .json()
+        .catch(() => null),
+      api
+        .get("profile")
+        .json()
+        .catch(() => null),
     ]);
 
     // Both should succeed after refresh
@@ -278,7 +284,9 @@ describe("API client — active context headers (F-020 / RF-3)", () => {
     selectWorkshop("w1");
 
     const { api } = await import("@/lib/api");
-    await api.get("care-episodes/lookup", { searchParams: { plate: "ABC123" } }).json();
+    await api
+      .get("care-episodes/lookup", { searchParams: { plate: "ABC123" } })
+      .json();
 
     expect(capturedRequests).toHaveLength(1);
     const headers = capturedRequests[0].headers;
@@ -307,9 +315,8 @@ describe("API client — active context headers (F-020 / RF-3)", () => {
   });
 
   it("logout resets the active context to null (RF-3)", async () => {
-    const { selectWorkshop, getActiveContext } = await import(
-      "@/lib/active-context"
-    );
+    const { selectWorkshop, getActiveContext } =
+      await import("@/lib/active-context");
     selectWorkshop("w1");
     expect(getActiveContext()).toEqual({ type: "WORKSHOP", workshopId: "w1" });
 
@@ -324,9 +331,8 @@ describe("API client — active context headers (F-020 / RF-3)", () => {
       makeResponse(500, { message: "Internal Server Error" }),
     );
 
-    const { selectWorkshop, getActiveContext } = await import(
-      "@/lib/active-context"
-    );
+    const { selectWorkshop, getActiveContext } =
+      await import("@/lib/active-context");
     selectWorkshop("w1");
 
     const { authApi } = await import("@/lib/api");
@@ -589,7 +595,7 @@ describe("API client — vehicleApi", () => {
         return makeResponse(200, { message: "ok" });
       }
       return makeResponse(409, {
-        message: "Ya existe un vehículo registrado con esa placa",
+        message: "Ya existe un vehículo registrado con esa patente",
         code: "VEHICLE_PLATE_EXISTS",
       });
     });
@@ -600,7 +606,7 @@ describe("API client — vehicleApi", () => {
       vehicleApi.updateVehicle("v1", { licensePlate: "ABC999" }),
     ).rejects.toMatchObject({
       status: 409,
-      message: "Ya existe un vehículo registrado con esa placa",
+      message: "Ya existe un vehículo registrado con esa patente",
       code: "VEHICLE_PLATE_EXISTS",
     });
 
@@ -803,8 +809,15 @@ describe("API client — vehicleApi", () => {
     const { vehicleApi } = await import("@/lib/api");
 
     await expect(
-      vehicleApi.uploadPhoto("v1", new File(["x"], "a.jpg", { type: "image/jpeg" })),
-    ).rejects.toMatchObject({ status: 403, message: "Forbidden", code: "FORBIDDEN" });
+      vehicleApi.uploadPhoto(
+        "v1",
+        new File(["x"], "a.jpg", { type: "image/jpeg" }),
+      ),
+    ).rejects.toMatchObject({
+      status: 403,
+      message: "Forbidden",
+      code: "FORBIDDEN",
+    });
   });
 
   // ── F-013: Documents ─────────────────────────────────────────────────────
@@ -932,7 +945,9 @@ describe("API client — vehicleApi", () => {
     });
 
     const { vehicleApi } = await import("@/lib/api");
-    await expect(vehicleApi.deleteDocument("v1", "d1")).resolves.toBeUndefined();
+    await expect(
+      vehicleApi.deleteDocument("v1", "d1"),
+    ).resolves.toBeUndefined();
 
     expect(capturedRequests[0].url).toContain("vehicles/v1/documents/d1");
     expect(capturedRequests[0].method).toBe("DELETE");
@@ -1354,6 +1369,187 @@ describe("API client — iteración 2-2 (owner service + verification)", () => {
     expect(refreshCalls).toHaveLength(0);
   });
 
+  it("rejectCareEpisode POSTs the reason body to /care-episodes/:id/reject", async () => {
+    let requestBody: string | null = null;
+    fetchSpy.mockImplementation(async (input, init) => {
+      const { url, method } = extractFetchInfo(input, init);
+      capturedRequests.push({ url, method });
+      if (input instanceof Request) {
+        requestBody = String(await input.clone().text());
+      } else if (init?.body) {
+        requestBody = String(init.body);
+      }
+      return makeResponse(200, {
+        id: "e1",
+        verification: "rejected",
+        rejectedByMemberId: "m1",
+        rejectedAt: "2026-09-11T15:00:00.000Z",
+        rejectionReason: "No consta en nuestros registros",
+      });
+    });
+
+    const { careEpisodeApi } = await import("@/lib/api");
+    const result = await careEpisodeApi.rejectCareEpisode(
+      "e1",
+      "No consta en nuestros registros",
+    );
+
+    expect(result.verification).toBe("rejected");
+    expect(result.rejectionReason).toBe("No consta en nuestros registros");
+
+    const rejectCalls = capturedRequests.filter((r) =>
+      r.url.includes("care-episodes/e1/reject"),
+    );
+    expect(rejectCalls).toHaveLength(1);
+    expect(rejectCalls[0].method).toBe("POST");
+    expect(JSON.parse(requestBody ?? "null")).toEqual({
+      reason: "No consta en nuestros registros",
+    });
+  });
+
+  it("rejectCareEpisode sin motivo envía { reason: undefined } (serializa a {})", async () => {
+    let requestBody: string | null = null;
+    fetchSpy.mockImplementation(async (input, init) => {
+      const { url, method } = extractFetchInfo(input, init);
+      capturedRequests.push({ url, method });
+      if (input instanceof Request) {
+        requestBody = String(await input.clone().text());
+      } else if (init?.body) {
+        requestBody = String(init.body);
+      }
+      return makeResponse(200, {
+        id: "e1",
+        verification: "rejected",
+        rejectedByMemberId: "m1",
+        rejectedAt: "2026-09-11T15:00:00.000Z",
+        rejectionReason: null,
+      });
+    });
+
+    const { careEpisodeApi } = await import("@/lib/api");
+    const result = await careEpisodeApi.rejectCareEpisode("e1");
+
+    expect(result.verification).toBe("rejected");
+    expect(result.rejectionReason).toBeNull();
+
+    const rejectCalls = capturedRequests.filter((r) =>
+      r.url.includes("care-episodes/e1/reject"),
+    );
+    expect(rejectCalls).toHaveLength(1);
+    expect(rejectCalls[0].method).toBe("POST");
+    expect(JSON.parse(requestBody ?? "null")).toEqual({});
+  });
+
+  it("closeCareEpisode POSTs the exact body to /care-episodes/:id/close", async () => {
+    let requestBody: string | null = null;
+    fetchSpy.mockImplementation(async (input, init) => {
+      const { url, method } = extractFetchInfo(input, init);
+      capturedRequests.push({ url, method });
+      if (input instanceof Request) {
+        requestBody = String(await input.clone().text());
+      } else if (init?.body) {
+        requestBody = String(init.body);
+      }
+      return makeResponse(200, {
+        data: {
+          id: "e1",
+          status: "delivered",
+          closedAt: "2026-11-17T12:00:00.000Z",
+          mileageOut: 45500,
+          mileageOutUnreadable: false,
+          mileageOutlier: false,
+        },
+      });
+    });
+
+    const { careEpisodeApi } = await import("@/lib/api");
+    const result = await careEpisodeApi.closeCareEpisode("e1", {
+      mileageOut: 45500,
+      closeNotes: "Cambio de aceite y filtro, frenos revisados.",
+    });
+
+    expect(result.data.status).toBe("delivered");
+    expect(result.data.mileageOut).toBe(45500);
+    expect(result.data.mileageOutlier).toBe(false);
+
+    const closeCalls = capturedRequests.filter((r) =>
+      r.url.includes("care-episodes/e1/close"),
+    );
+    expect(closeCalls).toHaveLength(1);
+    expect(closeCalls[0].method).toBe("POST");
+    // Body EXACTO: ni serviceTypeIds ni campos derivados del contexto.
+    expect(JSON.parse(requestBody ?? "null")).toEqual({
+      mileageOut: 45500,
+      closeNotes: "Cambio de aceite y filtro, frenos revisados.",
+    });
+  });
+
+  it("closeCareEpisode envía la excepción 'no legible' y expone mileageOutlier", async () => {
+    let requestBody: string | null = null;
+    fetchSpy.mockImplementation(async (input, init) => {
+      const { url, method } = extractFetchInfo(input, init);
+      capturedRequests.push({ url, method });
+      if (input instanceof Request) {
+        requestBody = String(await input.clone().text());
+      } else if (init?.body) {
+        requestBody = String(init.body);
+      }
+      return makeResponse(200, {
+        data: {
+          id: "e1",
+          status: "delivered",
+          closedAt: "2026-11-17T15:00:00.000Z",
+          mileageOut: null,
+          mileageOutUnreadable: true,
+          mileageOutlier: true,
+        },
+      });
+    });
+
+    const { careEpisodeApi } = await import("@/lib/api");
+    const result = await careEpisodeApi.closeCareEpisode("e1", {
+      mileageOutUnreadable: true,
+      mileageOutUnreadableReason: "Tablero sin display",
+      closeNotes: "Se reemplazó el tablero, odómetro no legible al egreso.",
+    });
+
+    expect(result.data.mileageOutUnreadable).toBe(true);
+    expect(result.data.mileageOutlier).toBe(true);
+    expect(JSON.parse(requestBody ?? "null")).toEqual({
+      mileageOutUnreadable: true,
+      mileageOutUnreadableReason: "Tablero sin display",
+      closeNotes: "Se reemplazó el tablero, odómetro no legible al egreso.",
+    });
+  });
+
+  it("maps closeCareEpisode 409 to { status, message, code } without refresh", async () => {
+    fetchSpy.mockImplementation(async (input, init) => {
+      const { url, method } = extractFetchInfo(input, init);
+      capturedRequests.push({ url, method });
+      return makeResponse(409, {
+        message: "La atención ya fue cerrada",
+        code: "CARE_EPISODE_ALREADY_CLOSED",
+      });
+    });
+
+    const { careEpisodeApi } = await import("@/lib/api");
+
+    await expect(
+      careEpisodeApi.closeCareEpisode("e1", {
+        mileageOut: 45500,
+        closeNotes: "Cambio de aceite y filtro, frenos revisados.",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "CARE_EPISODE_ALREADY_CLOSED",
+    });
+
+    const refreshCalls = capturedRequests.filter((r) =>
+      r.url.includes("auth/refresh"),
+    );
+    expect(refreshCalls).toHaveLength(0);
+  });
+
   it("searchWorkshops sends q as a query param (RF-3)", async () => {
     let requestBody: string | null = null;
     fetchSpy.mockImplementation(async (input, init) => {
@@ -1392,11 +1588,11 @@ describe("API client — iteración 2-2 (owner service + verification)", () => {
 
     const { workshopApi } = await import("@/lib/api");
 
-    await expect(workshopApi.searchWorkshops("Lubricentro")).rejects.toMatchObject(
-      {
-        status: 429,
-      },
-    );
+    await expect(
+      workshopApi.searchWorkshops("Lubricentro"),
+    ).rejects.toMatchObject({
+      status: 429,
+    });
   });
 });
 

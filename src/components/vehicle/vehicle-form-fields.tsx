@@ -7,9 +7,12 @@
  * duplicado. Cada page conserva su lógica (queries del catálogo, prefill de
  * la edición, submit y mapeo de errores); este componente sólo concentra la
  * presentación de los campos comunes, agrupados en secciones visuales
- * (Identificación / Catálogo vehicular / Detalles). Los bloques específicos —
+ * (Identificación / Catálogo vehicular / Detalles). El catálogo es
+ * marca → modelo: en MVP NO se usan versiones de vehículo. Los bloques
+ * específicos —
  * VIN editable en el alta vs. VIN read-only con corrección auditada en la
- * edición, y el kilometraje inicial de concesionaria — se inyectan como slots.
+ * edición, y el kilometraje (obligatorio en concesionaria / opcional para el
+ * propietario, D-206) — se inyectan como slots.
  */
 
 import type { ReactNode } from "react";
@@ -32,16 +35,12 @@ export interface CatalogOption {
 export interface CatalogCascadeProps {
   selectedBrandId: string;
   selectedModelId: string;
-  selectedVersionId: string;
   brands?: CatalogOption[];
   models?: CatalogOption[];
-  versions?: CatalogOption[];
   modelsLoading: boolean;
-  versionsLoading: boolean;
   brandsError: boolean;
   onBrandChange: (value: string) => void;
   onModelChange: (value: string) => void;
-  onVersionChange: (value: string) => void;
   /** Copy contextual: qué implica no tocar el catálogo en este flujo. */
   description: string;
   /** Copy contextual del mensaje cuando falla la carga del catálogo. */
@@ -53,7 +52,7 @@ interface VehicleFormFieldsProps<T extends FieldValues> {
   errors: FieldErrors<T>;
   /** Slot del campo VIN (editable en el alta / read-only + corrección en edición). */
   vinSlot: ReactNode;
-  /** Slot del kilometraje inicial (solo alta en contexto DEALERSHIP, D-07). */
+  /** Slot del kilometraje (obligatorio en DEALERSHIP; opcional en PERSONAL, D-206). */
   initialMileageSlot?: ReactNode;
   catalog: CatalogCascadeProps;
   /** Error de submit no ligado a un campo (se muestra con role="alert"). */
@@ -95,7 +94,7 @@ export function VehicleFormFields<T extends FieldValues>({
     <>
       <SectionFieldset legend="Identificación">
         <div className="grid gap-2">
-          <Label htmlFor="licensePlate">Placa</Label>
+          <Label htmlFor="licensePlate">Patente</Label>
           <Input
             id="licensePlate"
             placeholder="Ej. ABC123"
@@ -116,7 +115,7 @@ export function VehicleFormFields<T extends FieldValues>({
 
       <SectionFieldset legend="Catálogo vehicular (opcional)">
         <p className="text-xs text-muted-foreground">{catalog.description}</p>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="brand">Marca</Label>
             <Select
@@ -151,24 +150,6 @@ export function VehicleFormFields<T extends FieldValues>({
               {catalog.models?.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="version">Versión</Label>
-            <Select
-              id="version"
-              value={catalog.selectedVersionId}
-              onChange={(event) => catalog.onVersionChange(event.target.value)}
-              disabled={!catalog.selectedModelId || catalog.versionsLoading}
-            >
-              <option value="">
-                {catalog.versionsLoading ? "Cargando..." : "Seleccionar"}
-              </option>
-              {catalog.versions?.map((version) => (
-                <option key={version.id} value={version.id}>
-                  {version.name}
                 </option>
               ))}
             </Select>

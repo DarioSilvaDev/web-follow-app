@@ -25,6 +25,7 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
     language: "es",
     status: "active",
     isVehicleOwner: false,
+    phone: null,
     roles: [],
     workshopMemberships: [],
     ...overrides,

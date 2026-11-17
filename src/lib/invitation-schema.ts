@@ -3,10 +3,10 @@ import { z } from "zod";
 /**
  * Schemas zod del wizard público de invitación (concesionaria Y taller, D-106).
  *
- * WIZARD-REGISTER (paso 1, requiresRegister=true): recopila el registro
- * COMPLETO (incluye teléfono, que /auth/register NO acepta). El email viene
- * pre-cargado y read-only desde la invitación; los datos se envían dentro del
- * POST claim (NO se llama /auth/register — decisión backend congelada).
+ * WIZARD-REGISTER (paso 1, requiresRegister=true): recopila personal,
+ * teléfono y contraseña. Los datos se envían dentro del POST claim (NO se
+ * llama /auth/register — decisión backend congelada; el claim crea la cuenta
+ * sin celular). /auth/register público sí exige celular desde 2026-11.
  *
  * WIZARD-LOGIN (paso 1, requiresRegister=false): email readonly + contraseña.
  *

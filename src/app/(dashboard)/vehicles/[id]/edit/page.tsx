@@ -16,10 +16,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CorrectVinDialog } from "@/components/vehicle/correct-vin-dialog";
-import { VehicleFormFields } from "@/components/vehicle/vehicle-form-fields";
+import {
+  VehicleFormFields,
+  type CatalogOption,
+} from "@/components/vehicle/vehicle-form-fields";
 import { vehicleApi } from "@/lib/api";
 import { invalidateVehicleViews, vehicleKeys } from "@/lib/query-keys";
 import { VIN_CORRECTION_ENABLED } from "@/lib/feature-flags";
+import type { Vehicle } from "@/types/vehicle";
 import {
   CONFLICT_MESSAGES,
   conflictField,
@@ -37,6 +41,32 @@ function errorStatus(error: unknown): number | undefined {
   return (error as { status?: number }).status;
 }
 
+/**
+ * Selección del catálogo para el PATCH (MVP sin versiones).
+ *
+ * Manda `brandId` + `modelId` SOLO si la selección cambió respecto de la
+ * marca/modelo actuales del vehículo: si no cambió, ambos quedan vacíos y el
+ * mapper los omite (la rama del catálogo no se toca). Se compara por NOMBRE
+ * case-insensitive porque el backend puede traer texto sin ids. Una selección
+ * incompleta o vacía también se omite (no hay borrado de catálogo).
+ */
+function catalogSelectionForPayload(
+  vehicle: Vehicle,
+  brandId: string,
+  modelId: string,
+  brands: CatalogOption[] | undefined,
+  models: CatalogOption[] | undefined,
+): { brandId: string; modelId: string } {
+  const brandName = brands?.find((brand) => brand.id === brandId)?.name ?? "";
+  const modelName = models?.find((model) => model.id === modelId)?.name ?? "";
+  const changed =
+    brandName.trim().toLowerCase() !==
+      (vehicle.brand ?? "").trim().toLowerCase() ||
+    modelName.trim().toLowerCase() !==
+      (vehicle.model ?? "").trim().toLowerCase();
+  return changed ? { brandId, modelId } : { brandId: "", modelId: "" };
+}
+
 export default function EditVehiclePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -44,7 +74,6 @@ export default function EditVehiclePage() {
 
   const [selectedBrandId, setSelectedBrandId] = useState("");
   const [selectedModelId, setSelectedModelId] = useState("");
-  const [selectedVersionId, setSelectedVersionId] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [correctVinOpen, setCorrectVinOpen] = useState(false);
@@ -87,7 +116,8 @@ export default function EditVehiclePage() {
     }
   }, [vehicleQuery.data, reset]);
 
-  // Catalog cascade (D-038): brands on mount; models/versions on demand (RF-4).
+  // Catalog cascade (D-038): marca → modelo (MVP sin versiones). Brands on
+  // mount; models on demand (RF-4).
   const brandsQuery = useQuery({
     queryKey: ["vehicle-brands"],
     queryFn: vehicleApi.listBrands,
@@ -99,24 +129,18 @@ export default function EditVehiclePage() {
     enabled: selectedBrandId !== "",
   });
 
-  const versionsQuery = useQuery({
-    queryKey: ["vehicle-versions", selectedModelId],
-    queryFn: () => vehicleApi.listVersions(selectedModelId),
-    enabled: selectedModelId !== "",
-  });
-
   // ---------------------------------------------------------------------------
   // Pre-selección de la cascada a partir del detalle desnormalizado (RF-5).
-  // El backend NO expone brandId/modelId en VehicleResponseDto, solo los nombres
-  // (brand/model/version) + versionId. Por eso emparejamos por nombre, con
-  // fallback a "Seleccionar" si el catálogo cambió y ya no matchea.
+  // El backend puede NO exponer brandId/modelId (vehículos dados de alta con
+  // texto libre) y solo trae los nombres `brand`/`model`. Por eso emparejamos
+  // por nombre case-insensitive, sin gatear en `versionId` (legacy).
   // ---------------------------------------------------------------------------
   const vehicle = vehicleQuery.data;
 
   useEffect(() => {
     if (!vehicle || prefillDoneRef.current) return;
     // Sin catálogo → no hay nada que preseleccionar (D-038).
-    if (vehicle.versionId == null) {
+    if (!vehicle.brand && !vehicle.model) {
       prefillDoneRef.current = true;
       return;
     }
@@ -125,6 +149,7 @@ export default function EditVehiclePage() {
         (b) => b.name.toLowerCase() === vehicle.brand?.toLowerCase(),
       );
       if (brand) setSelectedBrandId(brand.id);
+      else prefillDoneRef.current = true; // el catálogo ya no matchea
     }
   }, [vehicle, brandsQuery.data, selectedBrandId]);
 
@@ -135,31 +160,16 @@ export default function EditVehiclePage() {
       (m) => m.name.toLowerCase() === vehicle.model?.toLowerCase(),
     );
     if (model) setSelectedModelId(model.id);
+    prefillDoneRef.current = true;
   }, [vehicle, selectedBrandId, modelsQuery.data, selectedModelId]);
-
-  useEffect(() => {
-    if (!vehicle || prefillDoneRef.current) return;
-    if (!selectedModelId || selectedVersionId || !versionsQuery.data) return;
-    const version =
-      versionsQuery.data.find((v) => v.id === vehicle.versionId) ??
-      versionsQuery.data.find(
-        (v) => v.name.toLowerCase() === vehicle.version?.toLowerCase(),
-      );
-    if (version) {
-      setSelectedVersionId(version.id);
-      prefillDoneRef.current = true;
-    }
-  }, [vehicle, selectedModelId, versionsQuery.data, selectedVersionId]);
 
   const handleBrandChange = (value: string) => {
     setSelectedBrandId(value);
     setSelectedModelId("");
-    setSelectedVersionId("");
   };
 
   const handleModelChange = (value: string) => {
     setSelectedModelId(value);
-    setSelectedVersionId("");
   };
 
   const onSubmit = async (data: EditVehicleFormValues) => {
@@ -169,10 +179,21 @@ export default function EditVehiclePage() {
     try {
       // D-040/D-043 (RF-8): PATCH parcial. toEditVehicleInput compara con el
       // prefill — opcionales vaciados → null explícito; ya vacíos → omitidos;
-      // con valor → valor. versionId solo viaja si cambió (NUNCA null, RF-2).
+      // con valor → valor. Catálogo: brandId/modelId solo si la selección
+      // cambió (siempre juntos, nunca null).
       await vehicleApi.updateVehicle(
         id,
-        toEditVehicleInput(vehicleQuery.data, data, selectedVersionId),
+        toEditVehicleInput(
+          vehicleQuery.data,
+          data,
+          catalogSelectionForPayload(
+            vehicleQuery.data,
+            selectedBrandId,
+            selectedModelId,
+            brandsQuery.data,
+            modelsQuery.data,
+          ),
+        ),
       );
 
       // RF-7: invalidar el listado y el detalle, y redirigir al detalle.
@@ -186,7 +207,7 @@ export default function EditVehiclePage() {
         code?: string;
       };
 
-      // RF-6/D-041: 409 → mensaje junto al campo (placa) o general; los valores
+      // RF-6/D-041: 409 → mensaje junto al campo (patente) o general; los valores
       // del formulario se conservan. Este formulario ya NO envía `vin` (D-03),
       // así que un 409 de VIN se surfacea como error general.
       if (apiError.status === 409) {
@@ -405,20 +426,16 @@ export default function EditVehiclePage() {
               catalog={{
                 selectedBrandId,
                 selectedModelId,
-                selectedVersionId,
                 brands: brandsQuery.data,
                 models: modelsQuery.data,
-                versions: versionsQuery.data,
                 modelsLoading: modelsQuery.isLoading,
-                versionsLoading: versionsQuery.isLoading,
                 brandsError: brandsQuery.isError,
                 onBrandChange: handleBrandChange,
                 onModelChange: handleModelChange,
-                onVersionChange: (value) => setSelectedVersionId(value),
                 description:
-                  "Si no se modifica, se mantiene la versión del catálogo actual. Si se vacía, la versión existente no se borra.",
+                  "Si no se modifica, se mantiene la marca/modelo actual del vehículo. Si lo cambiás, se guarda la nueva selección.",
                 errorHint:
-                  "No se pudo cargar el catálogo. Podés guardar sin marca/modelo/versión.",
+                  "No se pudo cargar el catálogo. Podés guardar sin marca/modelo.",
               }}
             />
           </CardContent>
