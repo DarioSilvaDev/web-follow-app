@@ -11,6 +11,7 @@ import {
   Camera,
   Car,
   CheckCircle2,
+  ClipboardList,
   Gauge,
   Loader2,
   Lock,
@@ -472,12 +473,24 @@ export default function CareEpisodeDetailPage() {
 
         {/* D-207: diagnóstico / resumen del cierre (visible si las hay). */}
         {detail.closeNotes ? (
-          <div className="border-t border-border/60 pt-4 bg-warning/20">
-            <InfoField
-              label="Diagnóstico / resumen"
-              value={detail.closeNotes}
-              valueClassName="whitespace-pre-wrap font-normal"
-            />
+          <div className="rounded-control border border-info bg-info/10 p-card">
+            <p
+              className={cn(
+                "flex items-center gap-1.5 text-info",
+                typeScale.meta,
+              )}
+            >
+              <ClipboardList className="size-[18px] shrink-0" aria-hidden="true" />
+              Diagnóstico / resumen
+            </p>
+            <p
+              className={cn(
+                "mt-label whitespace-pre-wrap text-foreground",
+                typeScale.body,
+              )}
+            >
+              {detail.closeNotes}
+            </p>
           </div>
         ) : null}
       </InfoCard>
