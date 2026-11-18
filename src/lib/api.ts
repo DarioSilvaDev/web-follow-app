@@ -252,6 +252,7 @@ export const api = ky.create({
             "auth/logout",
             "auth/forgot-password",
             "auth/reset-password",
+            "auth/reset-password/validate",
             "auth/register",
             "auth/verify-email",
           ];
@@ -454,6 +455,37 @@ export const authApi = {
       .post("auth/reset-password", { json: { token, password } })
       .json<{ message: string }>()
       .catch(toApiError),
+
+  /**
+   * GET /auth/reset-password/validate?token=<token> — valida el token de
+   * restablecimiento SIN consumirlo (idempotente; puede llamarse al montar).
+   *
+   * Contrato:
+   * - 200 → `{ valid: true }`
+   * - 400 → formato inválido (envelope VALIDATION_ERROR) → `{ valid: false }`
+   * - 401 → inexistente/usado/expirado (SESSION_EXPIRED) → `{ valid: false }`
+   *   (NUNCA dispara refresh/logout: la ruta está en `publicEndpoints`.)
+   * - 429 / 5xx / error de red → se propaga como error tipado `{ status, … }`
+   *   (vía `toApiError`) para que la UI decida (p.ej. mostrar el form con
+   *   aviso en vez de un falso "enlace inválido").
+   */
+  validateResetToken: async (
+    token: string,
+  ): Promise<{ valid: boolean }> => {
+    try {
+      return await api
+        .get("auth/reset-password/validate", { searchParams: { token } })
+        .json<{ valid: boolean }>();
+    } catch (error) {
+      if (isHTTPError(error)) {
+        const status = error.response.status;
+        if (status === 400 || status === 401) {
+          return { valid: false };
+        }
+      }
+      return toApiError(error);
+    }
+  },
 
   changePassword: (currentPassword: string, newPassword: string) =>
     api
