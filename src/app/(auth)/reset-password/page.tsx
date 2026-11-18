@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/card";
 import { PasswordInput } from "@/components/ui/password-input";
 import { useResetPassword } from "@/hooks/use-password-reset";
+import { authApi } from "@/lib/api";
 
 const resetPasswordSchema = z
   .object({
@@ -46,15 +47,29 @@ function ResetPasswordFormInner() {
   const router = useRouter();
   const resetPassword = useResetPassword();
 
-  // Token is derived directly from searchParams — no state copy needed.
-  // This avoids setState-in-effect entirely: the value is read synchronously
-  // during render and the URL cleanup runs as a side-effect without touching state.
-  const token = searchParams.get("token");
+  // Token is captured ONCE into state on mount. In Next.js 16
+  // `window.history.replaceState` (used below to clean the URL) syncs
+  // `useSearchParams()` → a live `searchParams.get("token")` would flip to
+  // null right after mount and the page would always fall into the
+  // "invalid link" state.
+  const [token] = useState(() => searchParams.get("token"));
 
   // Tracks whether the token was invalidated by a 401 response (form submit error).
   const [tokenInvalidated, setTokenInvalidated] = useState(false);
   const [redirectCountdown, setRedirectCountdown] = useState(3);
   const [success, setSuccess] = useState(false);
+  // Token validation state (GET /auth/reset-password/validate — idempotent,
+  // never consumes the token). "unavailable" = network/429/5xx: the form is
+  // still shown because the final POST validates for real.
+  const [validationStatus, setValidationStatus] = useState<
+    "validating" | "valid" | "invalid" | "unavailable"
+  >(() => (token ? "validating" : "invalid"));
+  const [validationAttempt, setValidationAttempt] = useState(0);
+
+  const retryValidation = () => {
+    setValidationStatus("validating");
+    setValidationAttempt((attempt) => attempt + 1);
+  };
 
   // Clean URL on mount — remove token param from address bar.
   // Intentionally empty deps: one-time cleanup, no state needed.
@@ -64,6 +79,29 @@ function ResetPasswordFormInner() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Validate the token on mount (idempotent — does NOT consume it).
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+
+    authApi
+      .validateResetToken(token)
+      .then((result) => {
+        if (cancelled) return;
+        setValidationStatus(result.valid ? "valid" : "invalid");
+      })
+      .catch(() => {
+        // Network / 429 / 5xx — do NOT show a false "invalid link".
+        // The final POST validates for real; surface a subtle inline notice.
+        if (!cancelled) setValidationStatus("unavailable");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, validationAttempt]);
 
   // Auto-redirect countdown after success
   useEffect(() => {
@@ -99,8 +137,8 @@ function ResetPasswordFormInner() {
     }
   };
 
-  // No token or token was invalidated
-  if (!token || tokenInvalidated) {
+  // No token, token failed server-side validation, or was invalidated on submit
+  if (!token || tokenInvalidated || validationStatus === "invalid") {
     return (
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
@@ -125,6 +163,22 @@ function ResetPasswordFormInner() {
             Solicitar un nuevo enlace
           </Link>
         </CardFooter>
+      </Card>
+    );
+  }
+
+  // Validating token state — same visual pattern as verify-email's loading state
+  if (validationStatus === "validating") {
+    return (
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl font-semibold">
+            Restablecer contraseña
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
       </Card>
     );
   }
@@ -168,6 +222,26 @@ function ResetPasswordFormInner() {
       </CardHeader>
       <form onSubmit={handleSubmit(onSubmit)}>
         <CardContent className="grid gap-4">
+          {validationStatus === "unavailable" && (
+            <div
+              className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
+              role="status"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                No pudimos verificar el enlace en este momento. Podés intentar
+                restablecer tu contraseña igualmente — el servidor validará el
+                enlace al enviar.{" "}
+                <button
+                  type="button"
+                  onClick={retryValidation}
+                  className="font-medium underline underline-offset-2 hover:no-underline"
+                >
+                  Reintentar verificación
+                </button>
+              </span>
+            </div>
+          )}
           <PasswordInput
             id="password"
             label="Nueva contraseña"

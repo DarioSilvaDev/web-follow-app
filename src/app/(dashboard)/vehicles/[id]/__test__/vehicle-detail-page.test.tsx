@@ -1,17 +1,21 @@
 /**
  * Tests for the vehicle detail page (/vehicles/[id]).
  *
- * Critical behaviors (F-013 §5-§9, D-039, RF-2, RF-5):
+ * Critical behaviors (F-013 §5-§9, D-039, RF-2):
  * - Parallel queries: ["vehicle", id] + ["vehicle", id, "photos"] +
  *   ["vehicle", id, "documents"] with progressive rendering.
  * - 404 → "Vehículo no encontrado"; 403 → "Acceso denegado" (RF-6).
  * - Owner (active ownership + type owner + current user) sees Editar,
- *   photo/document writes and the mileage form (D-039).
+ *   photo/document writes (D-039).
  * - Non-owner sees the "Acceso compartido" badge and read-only sections.
- * - Ficha shows the active owner full name (RF-2, nested user from GET /:id).
+ * - La sección "Identificación y propiedad" fue REMOVIDA (duplicaba el header;
+ *   decisión de producto). Las notas viven en el header de la página.
  * - Mutations invalidate their query keys and refetch.
  * - Photo/document upload errors are surfaced with role="alert".
- * - Mileage monotonicity error shows the RF-5 message (400/409).
+ *
+ * Nota: la sección de kilometraje del detalle está desactivada (decisión de
+ * producto). La carga de km vive en el dialog del dashboard y tiene cobertura
+ * propia en src/components/vehicle/__test__/mileage-register-dialog.test.tsx.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -42,7 +46,6 @@ const mockGetDocumentTypes = vi.fn();
 const mockUploadDocument = vi.fn();
 const mockUpdateDocument = vi.fn();
 const mockDeleteDocument = vi.fn();
-const mockRecordMileage = vi.fn();
 const mockGetVehicleHistory = vi.fn();
 
 vi.mock("@/lib/api", () => ({
@@ -57,7 +60,6 @@ vi.mock("@/lib/api", () => ({
     uploadDocument: (...args: unknown[]) => mockUploadDocument(...args),
     updateDocument: (...args: unknown[]) => mockUpdateDocument(...args),
     deleteDocument: (...args: unknown[]) => mockDeleteDocument(...args),
-    recordMileage: (...args: unknown[]) => mockRecordMileage(...args),
     getVehicleHistory: (...args: unknown[]) => mockGetVehicleHistory(...args),
   },
 }));
@@ -129,7 +131,6 @@ function makeVehicle(overrides: Record<string, unknown> = {}) {
     licensePlate: "ABC123",
     brand: "Toyota",
     model: "Corolla",
-    version: "XEI",
     manufactureYear: 2020,
     modelYear: 2021,
     color: "Rojo",
@@ -236,25 +237,25 @@ function renderPage() {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("Vehicle detail page", () => {
-  it("renders the ficha, owner controls, photos, documents and mileage", async () => {
+  it("renders the identity, owner controls, photos and documents", async () => {
     mockGetVehicle.mockResolvedValue(makeVehicle());
     mockListPhotos.mockResolvedValue(makeVehicle().photos);
     mockListDocuments.mockResolvedValue(makeVehicle().documents);
 
     renderPage();
 
-    // Header + ficha
+    // Header: identidad del vehículo + Notas (la sección duplicada
+    // "Identificación y propiedad" fue removida por pregunta del producto).
     expect(await screen.findByRole("heading", { name: "ABC123" })).toBeInTheDocument();
-    expect(screen.getByText("Ficha del vehículo")).toBeInTheDocument();
-    // El catálogo, los años, el color y el km aparecen por duplicado: en el
-    // header (VehicleHeader, desde 2-3) y en la ficha/secciones.
-    expect(screen.getAllByText("Toyota Corolla XEI").length).toBeGreaterThanOrEqual(1);
+    // El catálogo, los años y el color aparecen en el header.
+    expect(screen.getAllByText("Toyota Corolla").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("2020 / 2021").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Rojo").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("WVW123")).toBeInTheDocument();
     expect(screen.getByText("Nota original")).toBeInTheDocument();
-    // RF-2: titular = nombre/apellido del ownership activo (nested user)
-    expect(screen.getByText("Juan Perez")).toBeInTheDocument();
+    // La sección de la ficha ya no se renderiza (sin VIN ni "Titular actual").
+    expect(screen.queryByText("Ficha del vehículo")).not.toBeInTheDocument();
+    expect(screen.queryByText("WVW123")).not.toBeInTheDocument();
+    expect(screen.queryByText("Juan Perez")).not.toBeInTheDocument();
 
     // Owner controls (D-039)
     expect(screen.getByRole("link", { name: /editar/i })).toHaveAttribute(
@@ -284,10 +285,22 @@ describe("Vehicle detail page", () => {
     );
     expect(screen.getByRole("button", { name: /subir documento/i })).toBeInTheDocument();
 
-    // Mileage section (list + form) — el km también aparece en el header badge
+    // Kilometraje en modo lectura: el km aparece en el header badge (la
+    // sección de carga del detalle está desactivada por decisión de producto).
     expect(screen.getAllByText("25.000 km").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Propietario")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /registrar km/i })).toBeInTheDocument();
+  });
+
+  it("siempre muestra el bloque Notas (contenido o placeholder)", async () => {
+    mockGetVehicle.mockResolvedValue(makeVehicle({ notes: null }));
+    mockListPhotos.mockResolvedValue([]);
+    mockListDocuments.mockResolvedValue([]);
+
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "ABC123" })).toBeInTheDocument();
+    // Sin notas → el bloque queda visible con el placeholder (no desaparece).
+    expect(screen.getByText("Notas")).toBeInTheDocument();
+    expect(screen.getByText("Sin notas registradas")).toBeInTheDocument();
   });
 
   it("shows Acceso compartido and hides owner-only controls for non-owners", async () => {
@@ -326,12 +339,11 @@ describe("Vehicle detail page", () => {
     // Read-only: no upload / mutation controls
     expect(screen.queryByRole("button", { name: /subir foto/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /subir documento/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /registrar km/i })).not.toBeInTheDocument();
     // Photo edit overlay (primary/delete) hidden too
     expect(screen.queryByRole("button", { name: "Eliminar foto" })).not.toBeInTheDocument();
 
-    // Read still works: photos + mileage list visible (el km aparece en el
-    // header y en la sección — badge no es owner-gated).
+    // Read still works: photos + km badge visible (el km aparece en el
+    // header y no es owner-gated).
     expect(screen.getByText("Principal")).toBeInTheDocument();
     expect(screen.getAllByText("25.000 km").length).toBeGreaterThanOrEqual(1);
   });
@@ -374,7 +386,7 @@ describe("Vehicle detail page", () => {
 
     const { container } = renderPage();
 
-    await screen.findByText("Ficha del vehículo");
+    await screen.findByRole("heading", { name: "ABC123" });
     await screen.findByText("2 fotos — la foto principal se muestra primero.");
 
     await user.click(screen.getByRole("button", { name: /subir foto/i }));
@@ -402,7 +414,7 @@ describe("Vehicle detail page", () => {
     mockUploadPhoto.mockRejectedValue({ status: 400, message: "Invalid image" });
 
     const { container } = renderPage();
-    await screen.findByText("Ficha del vehículo");
+    await screen.findByRole("heading", { name: "ABC123" });
     await screen.findByText("Todavía no hay fotos de este vehículo.");
 
     const fileInput = container.querySelector(
@@ -454,92 +466,6 @@ describe("Vehicle detail page", () => {
     await waitFor(() => {
       expect(mockDeletePhoto).toHaveBeenCalledWith("v1", "p1");
     });
-  });
-
-  it("registers mileage with { mileage, notes } and refetches the vehicle (D-11, Gap 1)", async () => {
-    const user = userEvent.setup();
-    mockGetVehicle.mockResolvedValue(makeVehicle());
-    mockListPhotos.mockResolvedValue([]);
-    mockListDocuments.mockResolvedValue([]);
-    mockRecordMileage.mockResolvedValue({
-      id: "m2",
-      vehicleId: "v1",
-      mileage: 25100,
-      source: "owner",
-      notes: "Cambio de aceite",
-      recordedAt: "2026-09-11T00:00:00.000Z",
-      createdAt: "2026-09-11T00:00:00.000Z",
-    });
-
-    renderPage();
-
-    const kmInput = await screen.findByLabelText("Kilometraje (km)");
-    await user.type(kmInput, "25100");
-    await user.type(screen.getByLabelText("Notas (opcional)"), "Cambio de aceite");
-    await user.click(screen.getByRole("button", { name: /registrar km/i }));
-
-    await waitFor(() => {
-      // D-11: el cliente ya NO envía `source` — el backend lo deriva del
-      // contexto activo (concesionaria u dueño).
-      expect(mockRecordMileage).toHaveBeenCalledWith("v1", {
-        mileage: 25100,
-        notes: "Cambio de aceite",
-      });
-    });
-    // onSuccess invalidates ["vehicle", id] → getVehicle refetch
-    await waitFor(() => {
-      expect(mockGetVehicle).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  it("shows the RF-5 message when mileage is not monotonic (400)", async () => {
-    const user = userEvent.setup();
-    mockGetVehicle.mockResolvedValue(makeVehicle());
-    mockListPhotos.mockResolvedValue([]);
-    mockListDocuments.mockResolvedValue([]);
-    mockRecordMileage.mockRejectedValue({
-      status: 400,
-      message: "Mileage must be greater than or equal to last recorded",
-      code: "VALIDATION_ERROR",
-    });
-
-    renderPage();
-
-    const kmInput = await screen.findByLabelText("Kilometraje (km)");
-    await user.type(kmInput, "1000");
-    await user.click(screen.getByRole("button", { name: /registrar km/i }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "El kilometraje debe ser mayor o igual al último registrado (RF-5).",
-    );
-  });
-
-it("rejects invalid mileage input without calling the API", async () => {
-    mockGetVehicle.mockResolvedValue(makeVehicle());
-    mockListPhotos.mockResolvedValue([]);
-    mockListDocuments.mockResolvedValue([]);
-
-    const { container } = renderPage();
-
-    // Set km to "-5" via direct DOM value + change event
-    const kmInput = await screen.findByLabelText("Kilometraje (km)") as HTMLInputElement;
-    // Use the native setter to bypass React's value tracker, then fire change
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "value",
-    )!.set!;
-    nativeSetter.call(kmInput, "-5");
-    fireEvent.change(kmInput);
-
-    // Submit the form directly
-    const form = container.querySelector("form");
-    expect(form).not.toBeNull();
-    fireEvent.submit(form!);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Ingresá un kilometraje válido.",
-    );
-    expect(mockRecordMileage).not.toHaveBeenCalled();
   });
 
   it("uploads, edits and deletes a document (F-013)", async () => {
@@ -687,6 +613,10 @@ describe("Registrar servicio button (iteración 2-2)", () => {
  * Mismas reglas que "Registrar servicio" (D-063 / RF-8): el flujo de
  * transferencia es de propietario — solo owner activo y contexto PERSONAL.
  * Al abrir, el diálogo (stub) recibe vehicle.id de la ficha.
+ *
+ * Ajuste visual: la CTA ahora es una fila con título "Transferir vehículo"
+ * + subtítulo "Cambiar titularidad", así el nombre accesible del botón es
+ * la concatenación de ambos textos → se busca por regex /transferir/i.
  */
 describe("Transferir button (Fase 1 / D-078)", () => {
   it("se muestra para el owner en PERSONAL y abre el diálogo con el vehículo", async () => {
@@ -702,7 +632,7 @@ describe("Transferir button (Fase 1 / D-078)", () => {
     const openStub = screen.getByTestId("transfer-dialog-open");
     expect(openStub).toHaveTextContent("false");
 
-    await user.click(screen.getByRole("button", { name: "Transferir" }));
+    await user.click(screen.getByRole("button", { name: /transferir/i }));
 
     expect(screen.getByTestId("transfer-dialog-open")).toHaveTextContent(
       "true",
@@ -722,7 +652,7 @@ describe("Transferir button (Fase 1 / D-078)", () => {
 
     expect(await screen.findByRole("heading", { name: "ABC123" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Transferir" }),
+      screen.queryByRole("button", { name: /transferir/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -757,7 +687,7 @@ describe("Transferir button (Fase 1 / D-078)", () => {
 
     expect(await screen.findByRole("heading", { name: "ABC123" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Transferir" }),
+      screen.queryByRole("button", { name: /transferir/i }),
     ).not.toBeInTheDocument();
   });
 });
@@ -768,7 +698,7 @@ describe("Transferir button (Fase 1 / D-078)", () => {
  * el fallback a ownership mientras un backend previo no envíe `capabilities`.
  */
 describe("capabilities (Gap 1 / D-12)", () => {
-  it("habilita edición y kilometraje por capabilities aunque no haya ownership", async () => {
+  it("habilita edición por capabilities aunque no haya ownership", async () => {
     mockGetVehicle.mockResolvedValue(
       makeVehicle({
         ownerships: [],
@@ -792,9 +722,6 @@ describe("capabilities (Gap 1 / D-12)", () => {
       "href",
       "/vehicles/v1/edit",
     );
-    expect(
-      screen.getByRole("button", { name: /registrar km/i }),
-    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /subir foto/i }),
     ).toBeInTheDocument();
@@ -820,12 +747,9 @@ describe("capabilities (Gap 1 / D-12)", () => {
       screen.queryByRole("link", { name: /editar/i }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /registrar km/i }),
-    ).not.toBeInTheDocument();
-    expect(
       screen.queryByRole("button", { name: /subir foto/i }),
     ).not.toBeInTheDocument();
-    // El historial de kilometraje sigue visible en modo lectura.
+    // El km registrado sigue visible en modo lectura (header badge).
     expect(screen.getAllByText("25.000 km").length).toBeGreaterThanOrEqual(1);
   });
 

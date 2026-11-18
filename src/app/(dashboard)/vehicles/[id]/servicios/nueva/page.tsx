@@ -5,17 +5,30 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import {
   ArrowLeft,
+  ArrowRight,
+  BadgeCheck,
+  ChevronDown,
+  ChevronRight,
   Eye,
   ImagePlus,
+  List,
   Loader2,
+  PenLine,
   RotateCw,
   Search,
+  Store,
   Trash2,
 } from "lucide-react";
+import {
+  FormSection,
+  FormSectionAccordion,
+  type SectionStatus,
+} from "@/components/forms/form-section";
+import { BottomSheet, BottomSheetContent } from "@/components/ui/bottom-sheet";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -40,6 +53,11 @@ import type { WorkshopSearchResult } from "@/types/workshop";
 // Journey: formulario del servicio histórico → taller responsable (búsqueda en
 // la app con debounce **o** texto libre "Otro taller", XOR D-066) →
 // POST /api/care-episodes/owner (spec 2-2 §5, RF-1).
+//
+// Iteración 3 (UX "Taller responsable", imagen 3 + listado completo en bottom
+// sheet): buscador único compartido (inline + sugerencias + bottom sheet),
+// catálogo paginado `GET /workshops/catalog` para el listado completo y las
+// sugerencias, diferenciación "registrado en Autentia" vs "taller libre".
 //
 // WORKSHOP-only al revés: si hay un taller seleccionado, el backend responde
 // 403 (el handler exige ctx.type === 'PERSONAL'); la página orienta a volver a
@@ -132,6 +150,8 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<OwnerServiceFormValues>({
     resolver: zodResolver(ownerServiceSchema),
@@ -144,6 +164,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
   const [selectedWorkshop, setSelectedWorkshop] =
     useState<WorkshopSearchResult | null>(null);
   const [workshopError, setWorkshopError] = useState<string | null>(null);
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   const trimmedQuery = debouncedQuery.trim();
 
@@ -155,6 +176,16 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
       selectedWorkshop === null &&
       trimmedQuery.length >= 2,
     retry: false,
+  });
+
+  // Sugerencias (búsqueda vacía): primeros talleres activos del catálogo
+  // (orden alfabético), sin depender de que el usuario escriba.
+  const suggestionsQuery = useQuery({
+    queryKey: ["workshops-catalog", "suggestions"],
+    queryFn: () => workshopApi.listCatalog({ page: 1, limit: 4 }),
+    enabled: workshopMode === "search" && selectedWorkshop === null,
+    retry: false,
+    staleTime: 60_000,
   });
 
   const selectResult = (result: WorkshopSearchResult) => {
@@ -236,6 +267,35 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
     workshopName?: string;
   } | null>(null);
   const [confirmSubmitting, setConfirmSubmitting] = useState(false);
+
+  // ── Secciones del acordeón (mismo patrón que el check-in/alta) ──────────────
+  // Arrancan todas cerradas.
+  const [openSection, setOpenSection] = useState<string[]>([]);
+  /** Abre la sección indicada y cierra las demás (una sola abierta a la vez). */
+  const openSectionById = (id: string) => setOpenSection([id]);
+
+  const watchedTitle = watch("title") ?? "";
+  const watchedServiceDate = watch("serviceDate") ?? "";
+  const watchedWorkshopName = watch("workshopName") ?? "";
+
+  const servicioStatus: SectionStatus =
+    watchedTitle.trim() !== "" && watchedServiceDate.trim() !== ""
+      ? "complete"
+      : "incomplete";
+  const evidenciaStatus: SectionStatus =
+    evidenceFiles.length > 0 ? "complete" : "optional";
+  const tallerStatus: SectionStatus =
+    (workshopMode === "search"
+      ? selectedWorkshop !== null
+      : watchedWorkshopName.trim() !== ""
+    )
+      ? "complete"
+      : "incomplete";
+
+  const onInvalid = (formErrors: typeof errors) => {
+    const firstField = Object.keys(formErrors)[0];
+    openSectionById(firstField === "workshopName" ? "taller" : "servicio");
+  };
 
   const mapSubmitError = (error: unknown): string | null => {
     const apiError = error as { status?: number; message?: string };
@@ -329,6 +389,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
         setWorkshopError(
           "Buscá y seleccioná un taller, o elegí la opción \"Otro taller\".",
         );
+        openSectionById("taller");
         return;
       }
       workshopId = selectedWorkshop.id;
@@ -338,6 +399,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
         setWorkshopError(
           "Ingresá el nombre del taller, o buscá un taller en la app.",
         );
+        openSectionById("taller");
         return;
       }
       workshopName = name;
@@ -348,6 +410,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
       setWorkshopError(
         "Indicá un solo taller: seleccionado de la app o por texto libre.",
       );
+      openSectionById("taller");
       return;
     }
 
@@ -415,8 +478,8 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
               </Link>
             )}
             <p className="text-sm text-muted-foreground">
-              Quedará como "Registrado por el propietario" hasta que{" "}
-              {createdWorkshopLabel} lo verifique.
+              Quedará como &quot;Registrado por el propietario&quot; hasta que{" "}
+              {createdWorkshopLabel} lo verifique o lo rechace.
             </p>
           </CardContent>
           <CardFooter>
@@ -433,14 +496,28 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <Heading vehicleId={vehicleId} />
 
-      <Card>
-        <form onSubmit={handleSubmit(onSubmit)} noValidate>
-          <CardContent className="grid gap-4">
+      <form
+        onSubmit={handleSubmit(onSubmit, onInvalid)}
+        noValidate
+        className="grid gap-4 pb-2"
+      >
+          <FormSectionAccordion
+            value={openSection}
+            onValueChange={setOpenSection}
+          >
+            {/* Servicio — qué se hizo y cuándo */}
+            <FormSection
+              value="servicio"
+              title="Servicio"
+              status={servicioStatus}
+              description="Contá qué trabajo se hizo y en qué fecha."
+            >
             <div className="grid gap-2">
               <Label htmlFor="title">Título del servicio</Label>
               <Input
                 id="title"
-                placeholder="Ej. Cambio de aceite + 2 neumáticos"
+                className="bg-card"
+                placeholder="Ej. Cambio de aceite "
                 maxLength={120}
                 autoComplete="off"
                 aria-invalid={!!errors.title}
@@ -457,6 +534,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
               <Label htmlFor="serviceDate">Fecha del servicio</Label>
               <Input
                 id="serviceDate"
+                className="bg-card"
                 type="date"
                 max={todayISOLocal()}
                 aria-invalid={!!errors.serviceDate}
@@ -477,7 +555,9 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
               <Label htmlFor="mileageIn">Kilometraje (opcional)</Label>
               <Input
                 id="mileageIn"
+                className="bg-card"
                 inputMode="numeric"
+                sanitize="digits"
                 placeholder="Ej. 18500"
                 maxLength={10}
                 autoComplete="off"
@@ -495,6 +575,7 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
               <Label htmlFor="notes">Notas (opcional)</Label>
               <Textarea
                 id="notes"
+                className="bg-card"
                 placeholder="Ej. Aceite 5W30, dos neumáticos delanteros..."
                 rows={3}
                 maxLength={1000}
@@ -511,17 +592,16 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                 </p>
               )}
             </div>
+            </FormSection>
 
             {/* Evidencia opcional (S6 — multipart en la creación) */}
-            <div className="grid gap-2 rounded-lg ring-1 ring-foreground/10 p-3">
-              <div>
-                <p className="text-sm font-medium">Evidencia (opcional)</p>
-                <p className="text-xs text-muted-foreground">
-                  Podés adjuntar hasta 5 fotos (JPG, PNG, WebP o AVIF, máx. 5MB
-                  c/u). Se guardarán como evidencia en el historial del
-                  vehículo.
-                </p>
-              </div>
+            <FormSection
+              value="evidencia"
+              title="Evidencia"
+              status={evidenciaStatus}
+              description="Fotos del trabajo (hasta 5: JPG, PNG, WebP o AVIF, máx. 5MB c/u). Se guardan como evidencia en el historial."
+            >
+            <div className="grid gap-2">
 
               {evidenceFiles.length > 0 ? (
                 <ul className="grid gap-1.5">
@@ -586,33 +666,43 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                 onChange={handleEvidenceFiles}
               />
             </div>
+            </FormSection>
 
             {/* Taller responsable (XOR D-066) */}
-            <div className="grid gap-3 rounded-lg ring-1 ring-foreground/10 p-3">
-              <div>
-                <p className="text-sm font-medium">Taller responsable</p>
-                <p className="text-xs text-muted-foreground">
-                  El taller que realizó el trabajo. Si está en la app, lo verá
-                  en su cola de verificaciones y podrá confirmarlo.
-                </p>
-              </div>
+            <FormSection
+              value="taller"
+              title="Taller responsable"
+              status={tallerStatus}
+              description="El taller que realizó el trabajo. Si está en Autentia, podrá verificarlo."
+            >
 
               <div className="flex gap-2">
                 <Button
                   type="button"
                   variant={workshopMode === "search" ? "default" : "outline"}
                   size="sm"
-                  onClick={() => switchMode("search")}
+                  className="flex-1"
+                  onClick={() => {
+                    setWorkshopMode("search");
+                    setWorkshopError(null);
+                  }}
                 >
+                  <Search className="h-4 w-4" />
                   Buscar en la app
                 </Button>
                 <Button
                   type="button"
-                  variant={workshopMode === "other" ? "default" : "outline"}
+                  variant="outline"
                   size="sm"
-                  onClick={() => switchMode("other")}
+                  className="flex-1"
+                  onClick={() => {
+                    setWorkshopMode("search");
+                    setWorkshopError(null);
+                    setCatalogOpen(true);
+                  }}
                 >
-                  Otro taller
+                  <List className="h-4 w-4" />
+                  Seleccionar de la lista
                 </Button>
               </div>
 
@@ -620,10 +710,13 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                 <div className="grid gap-2">
                   {selectedWorkshop ? (
                     <div
-                      className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 p-2.5"
+                      className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-2.5"
                       data-testid="workshop-selected"
                     >
-                      <div className="min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Store className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">
                           {selectedWorkshop.name}
                         </p>
@@ -632,6 +725,10 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                             {selectedWorkshop.city}
                           </p>
                         )}
+                        <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-primary">
+                          <BadgeCheck className="h-3.5 w-3.5" />
+                          Registrado en Autentia
+                        </p>
                       </div>
                       <Button
                         type="button"
@@ -647,35 +744,74 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                       <Label htmlFor="workshop-search">
                         Buscar taller por nombre (mínimo 2 caracteres)
                       </Label>
-                      <div className="flex gap-2">
+                      <div className="relative">
+                        <Search
+                          aria-hidden="true"
+                          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                        />
                         <Input
                           id="workshop-search"
-                          placeholder="Ej. Lubricentro"
+                          placeholder="Buscar taller por nombre..."
                           maxLength={50}
                           autoComplete="off"
+                          className="bg-card pl-9 pr-11"
                           value={searchQuery}
                           onChange={(event) => setSearchQuery(event.target.value)}
                         />
-                        {searchQueryResult.isFetching ? (
-                          <Button type="button" variant="outline" disabled>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            aria-label="Buscar taller"
-                            disabled={trimmedQuery.length < 2}
-                          >
-                            <Search className="h-4 w-4" />
-                          </Button>
-                        )}
+                        <button
+                          type="button"
+                          aria-label="Ver todos los talleres"
+                          className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                          onClick={() => setCatalogOpen(true)}
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </button>
                       </div>
 
                       {trimmedQuery.length < 2 ? (
-                        <p className="text-xs text-muted-foreground">
-                          Escribí al menos 2 caracteres para buscar.
-                        </p>
+                        <>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Sugerencias
+                          </p>
+                          {suggestionsQuery.isLoading ? (
+                            <p
+                              role="status"
+                              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                            >
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Cargando sugerencias...
+                            </p>
+                          ) : suggestionsQuery.isError ? (
+                            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                              <span>No se pudieron cargar las sugerencias.</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void suggestionsQuery.refetch()}
+                              >
+                                Reintentar
+                              </Button>
+                            </div>
+                          ) : suggestionsQuery.data &&
+                            suggestionsQuery.data.data.length > 0 ? (
+                            <ul className="grid gap-1">
+                              {suggestionsQuery.data.data.map((result) => (
+                                <li key={result.id}>
+                                  <WorkshopResultButton
+                                    workshop={result}
+                                    onSelect={selectResult}
+                                  />
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              Todavía no hay talleres registrados. Podés
+                              registrarlo como taller libre.
+                            </p>
+                          )}
+                        </>
                       ) : searchQueryResult.isLoading ? (
                         <p
                           role="status"
@@ -685,29 +821,21 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                         </p>
                       ) : searchQueryResult.data &&
                         searchQueryResult.data.length > 0 ? (
-                        <ul className="grid gap-1">
-                          {searchQueryResult.data.map((result) => (
-                            <li key={result.id}>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="w-full justify-start text-left"
-                                onClick={() => selectResult(result)}
-                              >
-                                <span className="min-w-0">
-                                  <span className="block truncate font-medium">
-                                    {result.name}
-                                  </span>
-                                  {result.city && (
-                                    <span className="block truncate text-xs text-muted-foreground">
-                                      {result.city}
-                                    </span>
-                                  )}
-                                </span>
-                              </Button>
-                            </li>
-                          ))}
-                        </ul>
+                        <>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Resultados
+                          </p>
+                          <ul className="grid gap-1">
+                            {searchQueryResult.data.map((result) => (
+                              <li key={result.id}>
+                                <WorkshopResultButton
+                                  workshop={result}
+                                  onSelect={selectResult}
+                                />
+                              </li>
+                            ))}
+                          </ul>
+                        </>
                       ) : searchQueryResult.isError ? (
                         <SearchErrorPanel
                           status={
@@ -719,21 +847,62 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                       ) : (
                         <p className="text-sm text-muted-foreground">
                           No se encontraron talleres con ese nombre. Podés
-                          elegir "Otro taller" y escribirlo como texto libre.
+                          elegir &quot;Otro taller&quot; y escribirlo como texto libre.
                         </p>
                       )}
+
+                      {/* Listado completo paginado → bottom sheet */}
+                      <div className="border-t pt-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Ver todos los talleres
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setCatalogOpen(true)}
+                          className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-primary transition-colors outline-none hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <List className="h-4 w-4" />
+                          <span className="flex-1 text-left">
+                            Ver listado completo
+                          </span>
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <div className="flex justify-center border-t pt-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground"
+                          onClick={() => switchMode("other")}
+                        >
+                          <PenLine className="h-4 w-4" />
+                          ¿No está en Autentia? Usar otro taller
+                        </Button>
+                      </div>
                     </>
                   )}
                 </div>
               )}
 
               {workshopMode === "other" && (
-                <div className="grid gap-2">
+                <div className="grid gap-2 rounded-xl border border-dashed border-amber-500/50 bg-amber-500/5 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                      <PenLine className="h-3 w-3" />
+                      Taller libre
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      Sin verificación posible hasta que se registre en Autentia
+                    </span>
+                  </div>
                   <Label htmlFor="workshopName">
                     Nombre del taller (texto libre)
                   </Label>
                   <Input
                     id="workshopName"
+                    className="bg-card"
                     placeholder="Ej. Taller de la esquina"
                     maxLength={150}
                     autoComplete="off"
@@ -746,9 +915,23 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Quedará sin verificación posible hasta que ese taller se
-                    registre y lo reclame (fuera de alcance MVP).
+                    Es texto libre, no un taller verificable: quedará sin
+                    verificación posible hasta que ese taller se registre y lo
+                    reclame (fuera de alcance MVP).
                   </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="justify-self-start"
+                    onClick={() => {
+                      setWorkshopMode("search");
+                      setWorkshopError(null);
+                    }}
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver a buscar en la app
+                  </Button>
                 </div>
               )}
 
@@ -757,7 +940,8 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                   {workshopError}
                 </p>
               )}
-            </div>
+            </FormSection>
+          </FormSectionAccordion>
 
             {submitError && (
               <div className="grid gap-2" role="alert">
@@ -774,25 +958,46 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
                 )}
               </div>
             )}
-          </CardContent>
-          <CardFooter>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Registrando...
-                </>
-              ) : (
-                "Registrar servicio"
-              )}
-            </Button>
-          </CardFooter>
-        </form>
-      </Card>
+
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Registrando...
+            </>
+          ) : (
+            "Registrar servicio"
+          )}
+        </Button>
+      </form>
+
+      {/* Listado completo de talleres (bottom sheet). Vive fuera del
+          <form> para no anidar botones dentro del form. */}
+      {catalogOpen && (
+        <WorkshopCatalogSheet
+          open={catalogOpen}
+          onClose={() => setCatalogOpen(false)}
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          debouncedQuery={debouncedQuery}
+          onSelect={(workshop) => {
+            selectResult(workshop);
+            setCatalogOpen(false);
+          }}
+          onUseFreeText={(name) => {
+            clearSelection();
+            setWorkshopMode("other");
+            setWorkshopError(null);
+            setValue("workshopName", name);
+            setSearchQuery("");
+            setCatalogOpen(false);
+          }}
+        />
+      )}
 
       {/* D-074: modal de confirmación antes del POST /care-episodes/owner.
           Vive fuera del <form> para no anidar botones dentro del form. */}
@@ -809,14 +1014,23 @@ function OwnerServiceForm({ vehicleId }: { vehicleId: string }) {
 }
 
 function Heading({ vehicleId }: { vehicleId: string }) {
+  const activeContext = useActiveContext();
+  // Retorno contextual (mismo criterio que el detalle de atención): en
+  // contexto WORKSHOP el detalle del vehículo no es accesible (403), así que
+  // "volver" lleva a la lista de atenciones; resto → detalle del vehículo.
+  const isWorkshopContext = activeContext?.type === "WORKSHOP";
+  const backHref = isWorkshopContext ? "/atenciones" : `/vehicles/${vehicleId}`;
+  const backLabel = isWorkshopContext
+    ? "Volver a atenciones"
+    : "Volver al vehículo";
   return (
     <div>
       <Link
-        href={`/vehicles/${vehicleId}`}
+        href={backHref}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        Volver al vehículo
+        {backLabel}
       </Link>
       <h1 className="mt-3 text-2xl font-bold tracking-tight">
         Registrar servicio
@@ -847,6 +1061,216 @@ function SearchErrorPanel({
         Reintentar
       </Button>
     </div>
+  );
+}
+
+/**
+ * Fila de taller registrado (ícono + nombre + ciudad + chevron).
+ * Se usa igual en sugerencias, resultados de búsqueda y el bottom sheet.
+ */
+function WorkshopResultButton({
+  workshop,
+  onSelect,
+}: {
+  workshop: WorkshopSearchResult;
+  onSelect: (workshop: WorkshopSearchResult) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(workshop)}
+      className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <Store className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">
+          {workshop.name}
+        </span>
+        {workshop.city && (
+          <span className="block truncate text-xs text-muted-foreground">
+            {workshop.city}
+          </span>
+        )}
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+    </button>
+  );
+}
+
+/**
+ * Bottom sheet con el catálogo COMPLETO de talleres registrados en Autentia.
+ * Comparte el mismo estado de búsqueda del formulario (query/onQueryChange):
+ * no hay un segundo buscador independiente. Listado paginado con envelope
+ * `{ data, meta }` vía `useInfiniteQuery` ("Cargar más" incremental), acotado
+ * a "proveer el listado" — la selección vuelve al formulario con onSelect.
+ */
+function WorkshopCatalogSheet({
+  open,
+  onClose,
+  query,
+  onQueryChange,
+  debouncedQuery,
+  onSelect,
+  onUseFreeText,
+}: {
+  open: boolean;
+  onClose: () => void;
+  query: string;
+  onQueryChange: (value: string) => void;
+  debouncedQuery: string;
+  onSelect: (workshop: WorkshopSearchResult) => void;
+  onUseFreeText: (name: string) => void;
+}) {
+  const trimmed = debouncedQuery.trim();
+  const queryParam = trimmed.length >= 2 ? trimmed : undefined;
+
+  const catalogQuery = useInfiniteQuery({
+    queryKey: ["workshops-catalog", "sheet", queryParam ?? ""],
+    queryFn: ({ pageParam }) =>
+      workshopApi.listCatalog({ q: queryParam, page: pageParam, limit: 10 }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.page < lastPage.meta.totalPages
+        ? lastPage.meta.page + 1
+        : undefined,
+    retry: false,
+  });
+
+  const workshops =
+    catalogQuery.data?.pages.flatMap((page) => page.data) ?? [];
+  const total = catalogQuery.data?.pages[0]?.meta.total ?? null;
+
+  return (
+    <BottomSheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <BottomSheetContent title="Talleres en Autentia" onClose={onClose}>
+        {/* Buscador compartido (mismo valor que el del formulario) */}
+        <div className="shrink-0 px-4 pb-2">
+          <div className="relative">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              id="workshop-catalog-search"
+              aria-label="Buscar en el listado de talleres"
+              placeholder="Buscar taller por nombre..."
+              maxLength={50}
+              autoComplete="off"
+              className="pl-9"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+            />
+          </div>
+        </div>
+
+        <p className="shrink-0 px-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {queryParam ? `Resultados para "${trimmed}"` : "Todos los talleres"}
+        </p>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-2">
+          {catalogQuery.isLoading ? (
+            <p
+              role="status"
+              className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"
+            >
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Cargando talleres...
+            </p>
+          ) : catalogQuery.isError ? (
+            <div
+              role="alert"
+              className="grid justify-items-center gap-2 py-10 text-center"
+            >
+              <p className="text-sm text-destructive">
+                No se pudo cargar el listado de talleres.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void catalogQuery.refetch()}
+              >
+                <RotateCw className="h-3.5 w-3.5" />
+                Reintentar
+              </Button>
+            </div>
+          ) : workshops.length === 0 ? (
+            <div className="grid justify-items-center gap-2 py-10 text-center">
+              <p className="text-sm text-muted-foreground">
+                No encontramos talleres{queryParam ? ` para "${trimmed}"` : ""}.
+              </p>
+              {queryParam && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onUseFreeText(trimmed)}
+                >
+                  <PenLine className="h-4 w-4" />
+                  Usar &quot;{trimmed}&quot; como taller libre
+                </Button>
+              )}
+            </div>
+          ) : (
+            <ul className="grid gap-0.5 pb-2">
+              {workshops.map((workshop) => (
+                <li key={workshop.id}>
+                  <WorkshopResultButton
+                    workshop={workshop}
+                    onSelect={onSelect}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Footer: conteo + carga incremental / escape a taller libre */}
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t px-4 py-2">
+          <p className="text-[11px] text-muted-foreground" aria-live="polite">
+            {total !== null && workshops.length > 0
+              ? `Mostrando ${workshops.length} de ${total} · registrados en Autentia`
+              : "Talleres registrados en Autentia"}
+          </p>
+          {catalogQuery.hasNextPage ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={catalogQuery.isFetchingNextPage}
+              onClick={() => void catalogQuery.fetchNextPage()}
+            >
+              {catalogQuery.isFetchingNextPage ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Cargando...
+                </>
+              ) : (
+                <>
+                  Cargar más
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </Button>
+          ) : (
+            <button
+              type="button"
+              className="text-xs font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => onUseFreeText(trimmed)}
+            >
+              ¿No está? Taller libre
+            </button>
+          )}
+        </div>
+      </BottomSheetContent>
+    </BottomSheet>
   );
 }
 

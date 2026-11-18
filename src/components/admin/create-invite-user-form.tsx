@@ -24,6 +24,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -186,22 +187,12 @@ export function CreateInviteUserForm() {
         </div>
       </div>
 
-      {successBanner && (
-        <p
-          role="status"
-          className="rounded-lg border border-success/40 bg-success/10 px-3 py-2 text-sm text-success-foreground"
-        >
-          {successBanner}
-        </p>
-      )}
+      {successBanner && <Callout variant="success">{successBanner}</Callout>}
 
       {submitError && (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
+        <Callout variant="destructive" role="alert">
           {submitError}
-        </p>
+        </Callout>
       )}
 
       <div className="flex justify-end gap-2 pt-2">

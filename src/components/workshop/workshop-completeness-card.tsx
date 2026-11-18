@@ -30,11 +30,9 @@ export function WorkshopCompletenessCard({
 
   if (summary.isComplete) {
     return (
-      <div className="rounded-lg border border-success/40 bg-success/10 p-4">
-        <p className="text-sm font-medium text-success-foreground">
-          Tu taller está completo
-        </p>
-        <p className="mt-1 text-sm text-success-foreground/80">
+      <div className="rounded-lg border border-success bg-success/10 p-4">
+        <p className="text-sm font-medium">Tu taller está completo</p>
+        <p className="mt-1 text-sm text-muted-foreground">
           Todos los datos básicos están cargados.
         </p>
       </div>

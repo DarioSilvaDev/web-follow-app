@@ -17,6 +17,7 @@ import { useForm, type DefaultValues } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -185,12 +186,9 @@ export function InvitationStepEntity({
       </p>
 
       {submitError && (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
+        <Callout variant="destructive" role="alert">
           {submitError}
-        </p>
+        </Callout>
       )}
 
       <div className="flex items-center justify-between gap-2 pt-1">

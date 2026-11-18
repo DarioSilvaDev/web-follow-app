@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { cn } from "cn";
@@ -211,12 +212,9 @@ export function QrTransferPanel({
 
   if (!vehicleId) {
     return (
-      <p
-        role="alert"
-        className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-      >
+      <Callout variant="destructive" role="alert">
         Seleccioná primero un vehículo para generar el QR.
-      </p>
+      </Callout>
     );
   }
 
@@ -362,12 +360,9 @@ export function QrTransferPanel({
           ) : null}
 
           {error && (
-            <p
-              role="alert"
-              className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            >
+            <Callout variant="destructive" role="alert">
               {error}
-            </p>
+            </Callout>
           )}
 
           <div className="flex justify-end pt-1">

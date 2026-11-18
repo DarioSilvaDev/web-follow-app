@@ -3,7 +3,7 @@
  *
  * Cubre:
  * - Lista los vehículos de GET /dealerships/:id/vehicles.
- * - La placa enlaza al detalle del vehículo (/vehicles/[id]) — acceso al
+ * - La patente enlaza al detalle del vehículo (/vehicles/[id]) — acceso al
  *   historial desde la concesionaria.
  * - Acciones por vehículo: Vender (QR sale) y Devolver (QR return).
  */
@@ -42,7 +42,6 @@ const VEHICLE = {
   licensePlate: "BCD234",
   brand: "Renault",
   model: "Sandero",
-  version: "1.6 SCe",
   manufactureYear: 2022,
 };
 
@@ -51,14 +50,14 @@ beforeEach(() => {
 });
 
 describe("DealershipExhibitionSection", () => {
-  it("lista los vehículos en exhibición y enlaza la placa al detalle del vehículo", async () => {
+  it("lista los vehículos en exhibición y enlaza la patente al detalle del vehículo", async () => {
     mockListVehicles.mockResolvedValue([VEHICLE]);
     renderSection();
 
     const link = await screen.findByRole("link", { name: "BCD234" });
     expect(link).toHaveAttribute("href", "/vehicles/v1");
     expect(
-      screen.getByText(/Renault Sandero 1\.6 SCe/),
+      screen.getByText(/Renault Sandero/),
     ).toBeInTheDocument();
 
     expect(mockListVehicles).toHaveBeenCalledWith("d1");

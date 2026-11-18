@@ -6,7 +6,7 @@
  * detection and desc chronological ordering.
  */
 import { describe, it, expect } from "vitest";
-import { mergeHistory } from "@/lib/vehicle-history";
+import { latestEpisodeMileage, mergeHistory } from "@/lib/vehicle-history";
 import type {
   VehicleCareEpisode,
   VehicleHistoryResponse,
@@ -67,6 +67,7 @@ function makeCareEpisode(
     source: "owner",
     verification: "unverified",
     mileageIn: 68500,
+    mileageOut: null,
     customerNotes: null,
     checkedInAt: null,
     createdAt: "2026-09-12T10:00:00.000Z",
@@ -398,6 +399,46 @@ describe("mergeHistory — care episodes (iteración 2-3)", () => {
     expect(JSON.stringify(entries[0])).not.toContain("Verificado por");
   });
 
+  // ── Rechazo de verificación (diseño aprobado) ──────────────────────────────
+
+  it("owner rechazado → badge 'Rechazado por {taller}' con actor intacto (D-063)", () => {
+    const entries = mergeHistory(
+      makeHistory({
+        careEpisodes: [
+          makeCareEpisode({
+            verification: "rejected",
+            workshop: { id: "w1", name: "Taller Integral" },
+          }),
+        ],
+      }),
+    );
+
+    expect(entries[0].actor).toBe("Registrado por el propietario");
+    expect(entries[0].badge).toBe("Rechazado por Taller Integral");
+    // Nunca el copy de pendiente ni "Verificado por".
+    expect(JSON.stringify(entries[0])).not.toContain(
+      "Pendiente de verificación",
+    );
+    expect(JSON.stringify(entries[0])).not.toContain("Verificado por");
+  });
+
+  it("owner rechazado sin nombre de taller → fallback 'Rechazado por el taller responsable'", () => {
+    const entries = mergeHistory(
+      makeHistory({
+        careEpisodes: [
+          makeCareEpisode({
+            verification: "rejected",
+            workshop: null,
+            workshopName: null,
+          }),
+        ],
+      }),
+    );
+
+    expect(entries[0].badge).toBe("Rechazado por el taller responsable");
+    expect(entries[0].actor).toBe("Registrado por el propietario");
+  });
+
   it("merge global desc con las 4 fuentes mezcladas (D-052 / D-070)", () => {
     const entries = mergeHistory(
       makeHistory({
@@ -524,5 +565,142 @@ describe("mergeHistory — careId para deep-link (iteración 2-4)", () => {
     );
 
     expect(entries[0].careId).toBe("c1");
+  });
+});
+
+// ── Plan 05 / F-TZ-6: dateKind + dateOnly (semántica de la fecha) ─────────────
+
+describe("mergeHistory — dateKind / dateOnly (Plan 05 / F-TZ-6)", () => {
+  it("serviceDate de medianoche UTC → dateKind 'date' y dateOnly 'YYYY-MM-DD'", () => {
+    const entries = mergeHistory(
+      makeHistory({
+        careEpisodes: [
+          makeCareEpisode({ serviceDate: "2026-11-11T00:00:00.000Z" }),
+        ],
+      }),
+    );
+
+    expect(entries[0].dateKind).toBe("date");
+    expect(entries[0].dateOnly).toBe("2026-11-11");
+    // `date` NO cambia (orden D-070 + dateTime del <time>).
+    expect(entries[0].date).toBe("2026-11-11T00:00:00.000Z");
+  });
+
+  it("serviceDate ya date-only ('YYYY-MM-DD') → dateKind 'date'", () => {
+    const entries = mergeHistory(
+      makeHistory({
+        careEpisodes: [makeCareEpisode({ serviceDate: "2026-11-11" })],
+      }),
+    );
+
+    expect(entries[0].dateKind).toBe("date");
+    expect(entries[0].dateOnly).toBe("2026-11-11");
+  });
+
+  it("serviceDate con hora real (09:00Z del seed) → 'instant', nunca se trunca", () => {
+    const entries = mergeHistory(
+      makeHistory({
+        careEpisodes: [
+          makeCareEpisode({ serviceDate: "2026-11-11T09:00:00.000Z" }),
+        ],
+      }),
+    );
+
+    expect(entries[0].dateKind).toBe("instant");
+    expect(entries[0].dateOnly).toBeNull();
+    expect(entries[0].date).toBe("2026-11-11T09:00:00.000Z");
+  });
+
+  it("sin serviceDate → 'instant' (checkedInAt/createdAt son instantes)", () => {
+    const entries = mergeHistory(
+      makeHistory({
+        careEpisodes: [
+          makeCareEpisode({
+            serviceDate: null,
+            checkedInAt: "2026-09-10T00:00:00.000Z",
+            createdAt: "2026-09-09T00:00:00.000Z",
+          }),
+        ],
+      }),
+    );
+
+    expect(entries[0].dateKind).toBe("instant");
+    expect(entries[0].dateOnly).toBeNull();
+  });
+
+  it("transfers / mileages / ownerships siempre son 'instant' (nunca fecha calendario)", () => {
+    const entries = mergeHistory(
+      makeHistory({
+        transfers: [makeTransfer({ id: "t1" })],
+        mileages: [
+          {
+            id: "m1",
+            vehicleId: "v1",
+            mileage: 25000,
+            source: "owner",
+            notes: null,
+            recordedAt: "2026-09-10T00:00:00.000Z",
+            createdAt: "2026-09-10T00:00:00.000Z",
+          },
+        ],
+        ownerships: [makeOwnership({ id: "o1" })],
+      }),
+    );
+
+    expect(entries).toHaveLength(3);
+    for (const entry of entries) {
+      expect(entry.dateKind).toBe("instant");
+      expect(entry.dateOnly).toBeNull();
+    }
+  });
+});
+describe("latestEpisodeMileage (PM E � fallback de la ficha)", () => {
+  it("devuelve la lectura m�s reciente con procedencia", () => {
+    const result = latestEpisodeMileage([
+      makeCareEpisode({ id: "a", mileageIn: 1000 }),
+    ]);
+    expect(result).toMatchObject({
+      mileage: 1000,
+      phase: "ingreso",
+      source: "owner",
+    });
+  });
+
+  it("prefiere mileageOut (salida) sobre mileageIn (order D-070)", () => {
+    const result = latestEpisodeMileage([
+      makeCareEpisode({ id: "a", mileageIn: 1000, mileageOut: 1100 }),
+      makeCareEpisode({ id: "b", mileageIn: 2000 }),
+    ]);
+    expect(result).toMatchObject({ mileage: 1100, phase: "salida" });
+  });
+
+  it("saltea episodios cancelados", () => {
+    const result = latestEpisodeMileage([
+      makeCareEpisode({ id: "a", status: "cancelled", mileageIn: 1000 }),
+      makeCareEpisode({ id: "b", mileageIn: 2000 }),
+    ]);
+    expect(result).toMatchObject({ mileage: 2000 });
+  });
+
+  it("devuelve null si ning�n episodio tiene od�metro legible", () => {
+    expect(
+      latestEpisodeMileage([
+        makeCareEpisode({ id: "a", mileageIn: null, mileageOut: null }),
+      ]),
+    ).toBeNull();
+    expect(latestEpisodeMileage([])).toBeNull();
+    expect(latestEpisodeMileage(undefined)).toBeNull();
+  });
+
+  it("registrante del taller usa snapshot (no la relaci�n viva)", () => {
+    const result = latestEpisodeMileage([
+      makeCareEpisode({
+        id: "a",
+        source: "workshop",
+        workshopName: "Lo de Ceci",
+        workshop: { id: "w1", name: "Nombre Viejo" },
+      }),
+    ]);
+    expect(result?.registrant).toBe("el taller Lo de Ceci");
   });
 });

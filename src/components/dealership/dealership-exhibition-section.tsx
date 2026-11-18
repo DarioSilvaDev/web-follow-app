@@ -65,7 +65,8 @@ function formatArtsDate(value: string | null | undefined): string | null {
 }
 
 function vehicleDescription(vehicle: DealershipExhibitionVehicle): string {
-  const parts = [vehicle.brand, vehicle.model, vehicle.version].filter(Boolean);
+  // MVP sin versiones: marca + modelo (la `version` legacy no se muestra).
+  const parts = [vehicle.brand, vehicle.model].filter(Boolean);
   const years = [vehicle.manufactureYear, vehicle.modelYear]
     .filter((year): year is number => typeof year === "number")
     .join(" · ");

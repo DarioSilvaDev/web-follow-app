@@ -16,6 +16,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Mail, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -136,16 +137,9 @@ export function DealershipMembersSection({
   return (
     <div className="flex flex-col gap-4">
       {feedback && (
-        <p
-          role="status"
-          className={`rounded-lg border px-3 py-2 text-sm ${
-            feedback.kind === "success"
-              ? "border-emerald-600/30 bg-emerald-600/10 text-emerald-700 dark:text-emerald-300"
-              : "border-destructive bg-destructive/10 text-destructive"
-          }`}
-        >
+        <Callout variant={feedback.kind === "success" ? "success" : "destructive"}>
           {feedback.text}
-        </p>
+        </Callout>
       )}
 
       {isAdmin && (

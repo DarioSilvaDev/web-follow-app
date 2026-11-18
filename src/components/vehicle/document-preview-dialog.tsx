@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Download, ExternalLink, FileText, Loader2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "cn";
 import {
   Dialog,
   DialogDescription,
@@ -96,23 +97,29 @@ export function DocumentPreviewDialog({
               {metadata}
             </div>
             <div className="flex w-full max-w-xs flex-col gap-2">
-              <Button
-                render={
-                  <a href={url} target="_blank" rel="noreferrer" />
-                }
-                className="w-full"
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                // <a> real, no Button + render={<a>}: el elemento ES un enlace
+                // (role="link"), no un button con semántica prestada.
+                className={cn(buttonVariants(), "w-full")}
               >
                 <ExternalLink className="h-4 w-4" />
                 Abrir en el visor del sistema
-              </Button>
-              <Button
-                render={<a href={url} target="_blank" rel="noreferrer" />}
-                variant="outline"
-                className="w-full border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
+              </a>
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
+                  "w-full border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white",
+                )}
               >
                 <Download className="h-4 w-4" />
                 Descargar
-              </Button>
+              </a>
             </div>
           </div>
         ) : (
@@ -126,24 +133,30 @@ export function DocumentPreviewDialog({
                 No se pudo mostrar el PDF aquí.
               </p>
               <div className="flex gap-2">
-                <Button
-                  render={<a href={url} target="_blank" rel="noreferrer" />}
-                  variant="outline"
-                  size="sm"
-                  className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white",
+                  )}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                   Abrir en una pestaña nueva
-                </Button>
-                <Button
-                  render={<a href={url} target="_blank" rel="noreferrer" />}
-                  variant="outline"
-                  size="sm"
-                  className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                </a>
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white",
+                  )}
                 >
                   <Download className="h-3.5 w-3.5" />
                   Descargar
-                </Button>
+                </a>
               </div>
             </div>
 

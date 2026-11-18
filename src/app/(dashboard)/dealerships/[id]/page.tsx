@@ -26,8 +26,10 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Store } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DealershipExhibitionSection } from "@/components/dealership/dealership-exhibition-section";
 import { DealershipMembersSection } from "@/components/dealership/dealership-members-section";
@@ -71,38 +73,31 @@ export default function DealershipDetailPage() {
       )}
 
       {isNotFound && (
-        <Card>
-          <CardContent className="flex flex-col items-start gap-3 py-10">
-            <Store className="h-6 w-6 text-muted-foreground" />
-            <div>
-              <p className="font-medium">Concesionaria no encontrada</p>
-              <p className="text-sm text-muted-foreground">
-                No existe o no tenés acceso a esta concesionaria.
-              </p>
-            </div>
+        <EmptyState
+          icon={Store}
+          title="Concesionaria no encontrada"
+          description="No existe o no tenés acceso a esta concesionaria."
+          action={
             <Link
               href="/dealerships"
               className={buttonVariants({ size: "sm", variant: "outline" })}
             >
               Ver mis concesionarias
             </Link>
-          </CardContent>
-        </Card>
+          }
+        />
       )}
 
       {!isNotFound && dealershipQuery.isError && (
-        <Card>
-          <CardContent className="flex flex-col items-start gap-3 py-10">
-            <p className="font-medium text-destructive">
-              No se pudo cargar la concesionaria
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {dealershipError instanceof Error
-                ? dealershipError.message
-                : "Ocurrió un error inesperado. Intentá nuevamente."}
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Store}
+          title="No se pudo cargar la concesionaria"
+          description={
+            dealershipError instanceof Error
+              ? dealershipError.message
+              : "Ocurrió un error inesperado. Intentá nuevamente."
+          }
+        />
       )}
 
       {dealership && (
@@ -126,15 +121,11 @@ export default function DealershipDetailPage() {
                         "Sin razón social / CUIT cargados"}
                     </div>
                     <div className="flex items-center gap-2 pt-1 text-xs">
-                      <span
-                        className={
-                          dealership.isActive
-                            ? "rounded-full bg-emerald-500/15 px-2 py-0.5 font-medium text-emerald-600"
-                            : "rounded-full bg-muted px-2 py-0.5 font-medium text-muted-foreground"
-                        }
+                      <Badge
+                        variant={dealership.isActive ? "success" : "secondary"}
                       >
                         {dealership.isActive ? "Activa" : "Inactiva"}
-                      </span>
+                      </Badge>
                     </div>
                   </div>
                 </div>

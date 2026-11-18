@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileText, Loader2, RotateCw, Trash2, Upload } from "lucide-react";
+import {
+  Download,
+  FileText,
+  Loader2,
+  RotateCw,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -29,9 +36,15 @@ import {
 import { vehicleApi } from "@/lib/api";
 import { formatDate } from "@/lib/format-date";
 import { vehicleKeys } from "@/lib/query-keys";
-import { VehicleMediaViewer, type MediaViewerItem } from "./vehicle-media-viewer";
+import {
+  VehicleMediaViewer,
+  type MediaViewerItem,
+} from "./vehicle-media-viewer";
 import { DocumentPreviewDialog } from "./document-preview-dialog";
-import type { VehicleDocument, VehicleDocumentTypeOption } from "@/types/vehicle";
+import type {
+  VehicleDocument,
+  VehicleDocumentTypeOption,
+} from "@/types/vehicle";
 
 /** Detección de imagen por extensión del key (el schema NO expone mimeType). */
 function isImageDocument(doc: VehicleDocument): boolean {
@@ -46,7 +59,9 @@ function isPdfDocument(doc: VehicleDocument): boolean {
 /** ¿La URL firmada vence en menos del umbral? (Chequeo al abrir el preview.) */
 function isUrlExpiringSoon(expiresAt?: string | null): boolean {
   if (!expiresAt) return false;
-  return new Date(expiresAt).getTime() - Date.now() < SIGNED_URL_REFRESH_THRESHOLD_MS;
+  return (
+    new Date(expiresAt).getTime() - Date.now() < SIGNED_URL_REFRESH_THRESHOLD_MS
+  );
 }
 
 /**
@@ -78,7 +93,9 @@ export function DocumentsSection({
 
   // Preview state: imagen (visor) o PDF (iframe/Quick Look).
   const [imagePreviewId, setImagePreviewId] = useState<string | null>(null);
-  const [pdfPreviewDoc, setPdfPreviewDoc] = useState<VehicleDocument | null>(null);
+  const [pdfPreviewDoc, setPdfPreviewDoc] = useState<VehicleDocument | null>(
+    null,
+  );
   // URL firmada refrescada bajo demanda (expiración de la URL batch).
   const [urlOverrides, setUrlOverrides] = useState<Record<string, string>>({});
 
@@ -124,7 +141,12 @@ export function DocumentsSection({
     });
 
   const upload = useMutation({
-    mutationFn: (args: { file: File; name: string; documentType: string; expiresAt?: string }) =>
+    mutationFn: (args: {
+      file: File;
+      name: string;
+      documentType: string;
+      expiresAt?: string;
+    }) =>
       vehicleApi.uploadDocument(vehicleId, args.file, {
         name: args.name,
         documentType: args.documentType,
@@ -142,7 +164,12 @@ export function DocumentsSection({
   });
 
   const updateDoc = useMutation({
-    mutationFn: (args: { docId: string; name: string; documentType: string; expiresAt?: string | null }) =>
+    mutationFn: (args: {
+      docId: string;
+      name: string;
+      documentType: string;
+      expiresAt?: string | null;
+    }) =>
       vehicleApi.updateDocument(vehicleId, args.docId, {
         name: args.name,
         documentType: args.documentType,
@@ -181,9 +208,13 @@ export function DocumentsSection({
               "El archivo no es válido (imagen o PDF, máximo 10MB) o faltan datos.",
             );
           } else if (status === 403) {
-            setUploadError("No tenés permiso para modificar los documentos de este vehículo.");
+            setUploadError(
+              "No tenés permiso para modificar los documentos de este vehículo.",
+            );
           } else {
-            setUploadError("No se pudo subir el documento. Intentalo nuevamente.");
+            setUploadError(
+              "No se pudo subir el documento. Intentalo nuevamente.",
+            );
           }
         },
       },
@@ -210,9 +241,13 @@ export function DocumentsSection({
         onError: (error) => {
           const status = errorStatus(error);
           if (status === 403) {
-            setUploadError("No tenés permiso para modificar los documentos de este vehículo.");
+            setUploadError(
+              "No tenés permiso para modificar los documentos de este vehículo.",
+            );
           } else {
-            setUploadError("No se pudo actualizar el documento. Intentalo nuevamente.");
+            setUploadError(
+              "No se pudo actualizar el documento. Intentalo nuevamente.",
+            );
           }
         },
       },
@@ -330,7 +365,10 @@ export function DocumentsSection({
                       onSubmit={(e) => handleEditSubmit(e, doc.id)}
                     >
                       <div className="grid gap-1.5">
-                        <Label htmlFor={`doc-name-${doc.id}`} className="text-xs">
+                        <Label
+                          htmlFor={`doc-name-${doc.id}`}
+                          className="text-xs"
+                        >
                           Nombre
                         </Label>
                         <Input
@@ -341,7 +379,10 @@ export function DocumentsSection({
                         />
                       </div>
                       <div className="grid gap-1.5">
-                        <Label htmlFor={`doc-type-${doc.id}`} className="text-xs">
+                        <Label
+                          htmlFor={`doc-type-${doc.id}`}
+                          className="text-xs"
+                        >
                           Tipo
                         </Label>
                         <Select
@@ -358,7 +399,10 @@ export function DocumentsSection({
                         </Select>
                       </div>
                       <div className="grid gap-1.5">
-                        <Label htmlFor={`doc-expiry-${doc.id}`} className="text-xs">
+                        <Label
+                          htmlFor={`doc-expiry-${doc.id}`}
+                          className="text-xs"
+                        >
                           Vence (opcional)
                         </Label>
                         <Input
@@ -398,7 +442,9 @@ export function DocumentsSection({
                         }
                         onClick={() => openPreview(doc)}
                       >
-                        <p className="truncate text-sm font-medium">{doc.name}</p>
+                        <p className="truncate text-sm font-medium">
+                          {doc.name}
+                        </p>
                         <p className="truncate text-xs text-muted-foreground">
                           {typeLabel(doc.documentType)}
                           {doc.expiresAt
@@ -461,28 +507,6 @@ export function DocumentsSection({
                 onSubmit={handleUploadSubmit}
               >
                 <div className="grid gap-1.5">
-                  <Label htmlFor="doc-upload-file">Archivo</Label>
-                  <Input
-                    id="doc-upload-file"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/avif,application/pdf"
-                    required
-                    onChange={(e) =>
-                      setUploadFile(e.target.files?.[0] ?? null)
-                    }
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="doc-upload-name">Nombre</Label>
-                  <Input
-                    id="doc-upload-name"
-                    placeholder="Ej. Cédula verde"
-                    value={uploadName}
-                    onChange={(e) => setUploadName(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="grid gap-1.5">
                   <Label htmlFor="doc-upload-type">Tipo (opcional)</Label>
                   <Select
                     id="doc-upload-type"
@@ -498,6 +522,17 @@ export function DocumentsSection({
                   </Select>
                 </div>
                 <div className="grid gap-1.5">
+                  <Label htmlFor="doc-upload-name">Nombre</Label>
+                  <Input
+                    id="doc-upload-name"
+                    placeholder="Ej. Cédula verde"
+                    value={uploadName}
+                    onChange={(e) => setUploadName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="grid gap-1.5">
                   <Label htmlFor="doc-upload-expiry">
                     Vencimiento (opcional)
                   </Label>
@@ -508,6 +543,17 @@ export function DocumentsSection({
                     onChange={(e) => setUploadExpiry(e.target.value)}
                   />
                 </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="doc-upload-file">Archivo</Label>
+                  <Input
+                    id="doc-upload-file"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/avif,application/pdf"
+                    required
+                    onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                  />
+                </div>
+
                 <div className="flex gap-2">
                   <Button
                     type="submit"
@@ -585,11 +631,13 @@ export function DocumentsSection({
         <DialogPopup>
           <DialogTitle>Eliminar documento</DialogTitle>
           <DialogDescription>
-            ¿Estás seguro de que querés eliminar &quot;{docToDelete?.name}&quot;?
-            Esta acción no se puede deshacer.
+            ¿Estás seguro de que querés eliminar &quot;{docToDelete?.name}
+            &quot;? Esta acción no se puede deshacer.
           </DialogDescription>
           <div className="flex justify-end gap-2">
-            <DialogClose render={<Button variant="outline" disabled={remove.isPending} />}>
+            <DialogClose
+              render={<Button variant="outline" disabled={remove.isPending} />}
+            >
               Cancelar
             </DialogClose>
             <Button

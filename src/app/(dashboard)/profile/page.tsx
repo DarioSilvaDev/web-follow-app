@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AtSign, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertCircle, AtSign, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import {
   Card,
   CardHeader,
-  CardTitle,
   CardDescription,
   CardContent,
   CardFooter,
@@ -26,9 +26,7 @@ import { PersonalInfoCard } from "./personal-info-card";
 
 const changePasswordSchema = z
   .object({
-    currentPassword: z
-      .string()
-      .min(1, "La contraseña actual es requerida"),
+    currentPassword: z.string().min(1, "La contraseña actual es requerida"),
     newPassword: z
       .string()
       .min(8, "La contraseña debe tener al menos 8 caracteres")
@@ -138,33 +136,33 @@ function AliasCard() {
   // enforcement real server-side.
   const inCooldown = Boolean(
     data?.nextChangeAllowedAt &&
-      new Date(data.nextChangeAllowedAt).getTime() > Date.now(),
+    new Date(data.nextChangeAllowedAt).getTime() > Date.now(),
   );
 
   return (
     <Card className="w-full max-w-lg">
       <CardHeader>
-        <CardTitle className="text-lg font-semibold flex items-center gap-2">
-          <AtSign className="h-4 w-4" />
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <AtSign className="h-4 w-4" aria-hidden="true" />
           Mi alias
-        </CardTitle>
+        </h2>
         <CardDescription>
           Tu alias público lo ven otros usuarios al transferirte un vehículo.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {actionFeedback && (
-          <div
-            role="alert"
-            className={`flex items-center gap-2 rounded-lg border p-3 text-sm ${
-              actionFeedback.kind === "success"
-                ? "border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200"
-                : "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
-            }`}
+          <Callout
+            variant={
+              actionFeedback.kind === "success" ? "success" : "destructive"
+            }
+            role={actionFeedback.kind === "success" ? "status" : "alert"}
+            icon={
+              actionFeedback.kind === "success" ? CheckCircle2 : AlertCircle
+            }
           >
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
             {actionFeedback.text}
-          </div>
+          </Callout>
         )}
 
         {isLoading ? (
@@ -242,6 +240,14 @@ export default function ProfilePage() {
   const changePassword = useChangePassword();
   const [success, setSuccess] = useState(false);
 
+  // El mensaje de éxito se oculta solo después de unos segundos: feedback
+  // transitorio, no un estado permanente (la mutación no se re-ejecuta sola).
+  useEffect(() => {
+    if (!success) return;
+    const timer = setTimeout(() => setSuccess(false), 5000);
+    return () => clearTimeout(timer);
+  }, [success]);
+
   const {
     register,
     handleSubmit,
@@ -272,7 +278,7 @@ export default function ProfilePage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Mi Perfil</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Gestiona tu información personal y seguridad.
+          Administrá tu información personal y tu seguridad.
         </p>
       </div>
 
@@ -283,26 +289,23 @@ export default function ProfilePage() {
 
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">
-            Cambiar contraseña
-          </CardTitle>
+          <h2 className="text-lg font-semibold">Cambiar contraseña</h2>
           <CardDescription>
-            Actualiza tu contraseña para mantener tu cuenta segura.
+            Actualizá tu contraseña para mantener tu cuenta segura.
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
-          <CardContent className="grid gap-4">
+          <CardContent className="grid gap-4 mb-4">
             {success && (
-              <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <Callout variant="success" icon={CheckCircle2}>
                 Contraseña actualizada exitosamente.
-              </div>
+              </Callout>
             )}
 
             <PasswordInput
               id="currentPassword"
               label="Contraseña actual"
-              placeholder="Ingresa tu contraseña actual"
+              placeholder="Ingresá tu contraseña actual"
               autoComplete="current-password"
               error={errors.currentPassword?.message}
               register={register("currentPassword")}

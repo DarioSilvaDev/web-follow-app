@@ -23,6 +23,22 @@ export interface WorkshopBranch {
   isActive: boolean;
 }
 
+/**
+ * Especialidad del taller.
+ *
+ * Shape compartido por los endpoints existentes de especialidades
+ * (`workshops.controller.ts` / `public.controller.ts`):
+ * - `GET /workshops/:id/specialties` → especialidades cargadas (WorkshopGuard).
+ * - `GET /specialties` → catálogo público (SpecialtyResponseDto).
+ * - `POST /workshops/:id/specialties` → la asociación creada.
+ */
+export interface WorkshopSpecialty {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+}
+
 /** GET /api/workshops/:id → WorkshopResponseDto (branches activas, sede primero). */
 export interface WorkshopDetail {
   id: string;
@@ -85,6 +101,19 @@ export interface WorkshopSearchResult {
   name: string;
   logoUrl?: string | null;
   city: string | null;
+}
+
+/**
+ * Iteración "Taller responsable" 3 (RF-8, D-066): `GET /api/workshops/catalog`
+ * → envelope paginado `{ data, meta }` del catálogo PÚBLICO acotado de
+ * talleres activos (espejo de `/workshops/search`, pero page-based para
+ * "cargar más" incremental en el bottom sheet). Sin `q` devuelve el catálogo
+ * completo (orden alfabético); con `q` (≥ 2 chars) filtra por nombre.
+ * PII mínima `{id, name, logoUrl?, city}`; sin match → `data: []`.
+ */
+export interface WorkshopCatalogResponse {
+  data: WorkshopSearchResult[];
+  meta: WorkshopListMeta;
 }
 
 /**
