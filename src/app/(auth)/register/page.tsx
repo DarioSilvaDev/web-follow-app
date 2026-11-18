@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Mail, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
+import { Mail, ArrowLeft, Loader2, CheckCircle2, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,11 +30,37 @@ const registerSchema = z
     lastName: z
       .string()
       .min(2, "El apellido debe tener al menos 2 caracteres"),
+    phoneAreaCode: z
+      .string()
+      .trim()
+      .max(6, "El código de área es demasiado largo"),
+    phoneNationalNumber: z
+      .string()
+      .trim()
+      .max(12, "El número es demasiado largo"),
     email: z.string().email("Ingresa un email válido"),
     password: z
       .string()
       .min(8, "La contraseña debe tener al menos 8 caracteres"),
     confirmPassword: z.string(),
+  })
+  .superRefine((values, ctx) => {
+    // D-173: celular OBLIGATORIO — par área/número, país fijo +54.
+    const areaDigits = values.phoneAreaCode.replace(/\D/g, "");
+    const numberDigits = values.phoneNationalNumber.replace(/\D/g, "");
+    if (areaDigits === "" || numberDigits === "") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["phoneNationalNumber"],
+        message: "Ingresá el código de área y el número.",
+      });
+    } else if (areaDigits.length < 2 || numberDigits.length < 2) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["phoneNationalNumber"],
+        message: "Ingresá un celular válido (código de área y número).",
+      });
+    }
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Las contraseñas no coinciden",
@@ -72,12 +98,16 @@ function RegisterFormInner() {
         lastName: data.lastName,
         email: data.email,
         password: data.password,
+        phone: {
+          areaCode: data.phoneAreaCode.replace(/\D/g, ""),
+          nationalNumber: data.phoneNationalNumber.replace(/\D/g, ""),
+        },
       });
       setSuccess(true);
     } catch (err: unknown) {
       const error = err as { status?: number; message?: string; code?: string };
       if (error.status === 400) {
-        setServerError(error.message || "Datos inválidos. Revisa el formulario.");
+        setServerError(error.message || "Datos inválidos. Revisá el formulario.");
       } else if (error.status === 409) {
         setServerError(
           error.message || "Ya existe una cuenta con este email.",
@@ -162,6 +192,67 @@ function RegisterFormInner() {
               )}
             </div>
           </div>
+
+          {/* Celular OBLIGATORIO — par área/número, país fijo +54 (D-173) */}
+          <fieldset className="grid gap-2 rounded-control border border-border/60 p-4">
+            <legend className="mb-1 flex items-center gap-1.5 px-1 text-sm font-semibold text-foreground">
+              <Smartphone
+                className="size-4 text-muted-foreground"
+                aria-hidden="true"
+              />
+              Celular
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-[8rem_1fr]">
+              <div className="grid gap-2">
+                <Label htmlFor="register-phone-area">Código de área</Label>
+                <Input
+                  id="register-phone-area"
+                  inputMode="numeric"
+                  placeholder="341"
+                  maxLength={6}
+                  autoComplete="tel-area-code"
+                  aria-invalid={
+                    !!(errors.phoneNationalNumber ?? errors.phoneAreaCode)
+                  }
+                  aria-describedby={
+                    errors.phoneNationalNumber ?? errors.phoneAreaCode
+                      ? "register-phone-pair-error"
+                      : undefined
+                  }
+                  {...register("phoneAreaCode")}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="register-phone-number">Número</Label>
+                <Input
+                  id="register-phone-number"
+                  inputMode="numeric"
+                  placeholder="3750611"
+                  maxLength={12}
+                  autoComplete="tel-national"
+                  aria-invalid={
+                    !!(errors.phoneNationalNumber ?? errors.phoneAreaCode)
+                  }
+                  aria-describedby={
+                    errors.phoneNationalNumber ?? errors.phoneAreaCode
+                      ? "register-phone-pair-error"
+                      : undefined
+                  }
+                  {...register("phoneNationalNumber")}
+                />
+              </div>
+            </div>
+            {(errors.phoneNationalNumber ?? errors.phoneAreaCode) && (
+              <p
+                id="register-phone-pair-error"
+                role="alert"
+                className="text-sm text-destructive"
+              >
+                {errors.phoneNationalNumber?.message ??
+                  errors.phoneAreaCode?.message}
+              </p>
+            )}
+          </fieldset>
 
           <div className="grid gap-2">
             <Label htmlFor="email">Email</Label>

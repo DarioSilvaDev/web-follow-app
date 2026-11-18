@@ -13,7 +13,8 @@
  * - ownerships → `startsAt`
  * - cares      → `serviceDate ?? checkedInAt ?? createdAt`
  */
-import type { VehicleHistoryResponse } from "@/types/vehicle";
+import type { VehicleCareEpisode, VehicleHistoryResponse } from "@/types/vehicle";
+import { toDateOnly } from "@/lib/format-date";
 
 export type TimelineEntryType = "transfer" | "mileage" | "ownership" | "care";
 
@@ -23,16 +24,34 @@ export interface TimelineEntry {
   id: string;
   /** Timestamp ISO usado para ordenar (createdAt/recordedAt/startsAt/D-070). */
   date: string;
+  /**
+   * Plan 05 / F-TZ-6: semántica de `date`. Decide **zona horaria** de render
+   * (no si se muestra la hora): `date` → fecha calendario en UTC;
+   * `instant` → hora local con el criterio de presentación de cada superficie.
+   *
+   * - `date`: `serviceDate` era una fecha calendario válida (`YYYY-MM-DD` o
+   *   medianoche UTC). `dateOnly` trae el día normalizado.
+   * - `instant`: cualquier otro caso (incluye `serviceDate` anómalo, p. ej.
+   *   `…T09:00:00Z`, que **nunca** se trunca). `dateOnly` es `null`.
+   *
+   * `date` NO cambia: sigue siendo el ISO de orden D-070 y el `dateTime` del
+   * `<time>`.
+   */
+  dateKind: "date" | "instant";
+  /** `YYYY-MM-DD` cuando `dateKind === "date"`; `null` en instantes. */
+  dateOnly: string | null;
   type: TimelineEntryType;
   title: string;
   /** Texto secundario (actor / fuente / nombres), cuando aplica. */
   actor?: string;
   /**
    * Leyenda de estado del episodio (D-071). Iteración 2-3: "Pendiente de
-   * verificación" para owner sin verificar. El texto "Verificado por
-   * {taller}" NUNCA vive acá: es el `actor` del episodio owner verificado y
-   * su gate exclusivo es `verification === "verified"` (TL §3.3 — nunca por
-   * presencia de `workshop`).
+   * verificación" para owner sin verificar; "Rechazado por {taller}" para
+   * `verification === "rejected"` (fallback "Rechazado por el taller
+   * responsable"). El texto "Verificado por {taller}" NUNCA vive acá: es el
+   * `actor` del episodio owner verificado y su gate exclusivo es
+   * `verification === "verified"` (TL §3.3 — nunca por presencia de
+   * `workshop`).
    */
   badge?: string;
   /** Notas de la fuente, si existen. */
@@ -70,6 +89,57 @@ export function mileageSourceLabel(source?: string | null): string {
   return MILEAGE_SOURCE_LABELS[source] ?? source;
 }
 
+/**
+ * Lectura de odómetro más reciente declarada en una atención (D-070), para
+ * mostrar un "Kilometraje actual" honesto cuando el vehículo NO tiene ningún
+ * `VehicleMileage` (p. ej. registrado por el taller en el check-in).
+ *
+ * Reglas (PM E, 2026-11):
+ * - Episodios `cancelled` se ignoran (no hubo atención real, D-024 A1/3).
+ * - Se prefiere `mileageOut` (salida, más reciente) sobre `mileageIn`.
+ * - Odómetro ilegible (`mileageInUnreadable`) o sin lecturas → `null`
+ *   (el caller conserva el estado "no registrado"; nunca se inventa un km).
+ * - `episodes` viene ordenado por el historial (D-070): el primero gana.
+ * - El resultado SIEMPRE es "dato declarado sin verificar": quien lo muestre
+ *   DEBE etiquetarlo con su procedencia. Nunca alcanza para un
+ *   `VehicleMileage` sin acto explícito del titular.
+ */
+export interface EpisodeMileageReading {
+  mileage: number;
+  /** "ingreso" | "salida" — qué lectura fue (preferencia por `mileageOut`). */
+  phase: "ingreso" | "salida";
+  /** Quién lo declaró: taller (snapshot/relación) o propietario. */
+  registrant: string | null;
+  /** Fecha canónica del episodio (`serviceDate ?? checkedInAt ?? createdAt`). */
+  at: string | null;
+  source: "owner" | "workshop";
+}
+
+export function latestEpisodeMileage(
+  episodes?: VehicleCareEpisode[],
+): EpisodeMileageReading | null {
+  if (!episodes) return null;
+  for (const episode of episodes) {
+    if (episode.status === "cancelled") continue;
+    const mileage = episode.mileageOut ?? episode.mileageIn;
+    if (mileage === null || mileage === undefined) continue;
+    const workshopName = episode.workshopName ?? episode.workshop?.name ?? null;
+    return {
+      mileage,
+      phase: episode.mileageOut != null ? "salida" : "ingreso",
+      registrant:
+        episode.source === "workshop" && workshopName
+          ? `el taller ${workshopName}`
+          : episode.source === "owner"
+            ? "el propietario"
+            : (workshopName ?? null),
+      at: episode.serviceDate ?? episode.checkedInAt ?? episode.createdAt ?? null,
+      source: episode.source,
+    };
+  }
+  return null;
+}
+
 function userName(user?: { firstName: string; lastName: string }): string {
   if (!user) return "";
   return [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
@@ -85,8 +155,11 @@ function userName(user?: { firstName: string; lastName: string }): string {
  * - Cares (2-3): date = `serviceDate ?? checkedInAt ?? createdAt` (D-070);
  *   título `title ?? fallback por source` (D-071); actor según source y
  *   verification; sufijo "(cancelada)" si `status === "cancelled"`;
- *   badge "Pendiente de verificación" solo owner unverified. El actor
- *   "Verificado por {taller}" es EXCLUSIVO de `verification === "verified"`.
+ *   badge "Pendiente de verificación" solo owner unverified; badge
+ *   "Rechazado por {taller}" (fallback "Rechazado por el taller responsable")
+ *   para `verification === "rejected"` con el ACTOR intacto — "Registrado por
+ *   el propietario" (D-063: el origen no cambia). El actor "Verificado por
+ *   {taller}" es EXCLUSIVO de `verification === "verified"`.
  *
  * Desempate: por timestamp; no hay regla estricta para empates exactos
  * (ver RF-1). El sort es estable — los empates conservan el orden de
@@ -99,6 +172,8 @@ export function mergeHistory(history: VehicleHistoryResponse): TimelineEntry[] {
     entries.push({
       id: `transfer:${transfer.id}`,
       date: transfer.createdAt,
+      dateKind: "instant",
+      dateOnly: null,
       type: "transfer",
       title: `Transferencia ${
         TRANSFER_STATUS_LABELS[transfer.status] ?? transfer.status
@@ -112,6 +187,8 @@ export function mergeHistory(history: VehicleHistoryResponse): TimelineEntry[] {
     entries.push({
       id: `mileage:${mileage.id}`,
       date: mileage.recordedAt,
+      dateKind: "instant",
+      dateOnly: null,
       type: "mileage",
       title: `${mileage.mileage.toLocaleString("es-AR")} km registrado`,
       actor: mileageSourceLabel(mileage.source),
@@ -134,6 +211,8 @@ export function mergeHistory(history: VehicleHistoryResponse): TimelineEntry[] {
     entries.push({
       id: `ownership:${ownership.id}`,
       date: ownership.startsAt,
+      dateKind: "instant",
+      dateOnly: null,
       type: "ownership",
       title:
         index === 0
@@ -177,14 +256,30 @@ export function mergeHistory(history: VehicleHistoryResponse): TimelineEntry[] {
       actor = `Taller ${workshopName}`.trim();
     } else if (care.verification === "verified") {
       actor = `Verificado por ${workshopName}`.trim();
+    } else if (care.verification === "rejected") {
+      // Rechazo de verificación (diseño aprobado): el ACTOR se mantiene
+      // "Registrado por el propietario" (D-063 — el origen no cambia); el
+      // estado viaja en el badge.
+      actor = "Registrado por el propietario";
+      badge = workshopName
+        ? `Rechazado por ${workshopName}`
+        : "Rechazado por el taller responsable";
     } else {
       actor = "Registrado por el propietario";
       badge = "Pendiente de verificación";
     }
 
+    // Plan 05 / F-TZ-6 (D-TZ-7): `serviceDate` solo es fecha calendario si
+    // valida como date-only (`YYYY-MM-DD` o medianoche UTC). Un ISO con hora
+    // real (p. ej. los `09:00Z` del seed) se trata como instante: nunca se
+    // trunca. `date` sigue siendo el valor crudo de orden D-070.
+    const dateOnly = toDateOnly(care.serviceDate);
+
     entries.push({
       id: `care:${care.id}`,
       date: care.serviceDate ?? care.checkedInAt ?? care.createdAt,
+      dateKind: dateOnly ? "date" : "instant",
+      dateOnly,
       type: "care",
       title,
       actor,

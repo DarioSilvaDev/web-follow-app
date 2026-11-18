@@ -92,6 +92,13 @@ Cuando el código contradiga una decisión aceptada, debe considerarse legacy, b
 | PROD-013 | Membresía de concesionaria en contexto PERSONAL no habilita la vía; se informa    | `ACCEPTED` |
 | PROD-014 | El selector de contexto del header se acepta como transitorio                    | `ACCEPTED` |
 
+### Producto — Alta de vehículos
+
+| ID      | Decisión                                                                              | Estado    |
+| ------- | -------------------------------------------------------------------------------------- | --------- |
+| PROD-015 | El alta PERSONAL muestra "Kilometraje actual" como campo **opcional**                  | `ACCEPTED` |
+| PROD-016 | En DEALERSHIP el campo sigue siendo "Kilometraje inicial" y **obligatorio**             | `ACCEPTED` |
+
 ### Arquitectura frontend
 
 | ID     | Decisión                                                                                  | Estado    |
@@ -111,6 +118,16 @@ Cuando el código contradiga una decisión aceptada, debe considerarse legacy, b
 | SEC-001 | No confiar en `X-Context-Type` / `X-Context-Id`; validar server-side         | `PENDING` |
 | SEC-002 | Persistir el contexto activo en cookie httpOnly, no en localStorage          | `PENDING` |
 | SEC-003 | Exposición mínima de permisos en `/auth/me`                                  | `PENDING` |
+
+> **Ref. SEC-002 / D-021 (2026-10-29).** La persistencia del contexto activo se
+> resolvió **parcialmente** en el frontend con `sessionStorage` por-pestaña
+> (`autentia:active-context:v1`, payload mínimo `{type, id}`, validado contra
+> las membresías de la sesión). No contradice SEC-002, que sigue `PENDING`:
+> SEC-002 propone cookie httpOnly como persistencia definitiva; el storage
+> actual es solo UX y **no** es frontera de seguridad (el backend revalida
+> `X-Context-*` por request ⇒ 403). Sigue abierto el alcance amplio (cookie
+> httpOnly, persistencia entre reinicios, sync multi-pestaña). Ver
+> `DEUDA-TECNICA.md` § "2026-10-29 — D-021 (parcial)…".
 
 ---
 
@@ -268,6 +285,23 @@ Impacto funcional del vacío: `/atenciones/nueva` deshabilita el submit cuando `
 
 ---
 
+### PROD-015 / PROD-016 — Kilometraje en el alta de vehículo
+
+**Estado:** `ACCEPTED` (2026-11-15)
+
+**Decisión.**
+
+- **PERSONAL (PROD-015).** `/vehicles/new` muestra **"Kilometraje actual (opcional)"**. El usuario está dando de alta **su propio** vehículo y conoce (o puede consultar en el tablero) el odómetro; pedirlo en el momento de mayor intención es la única oportunidad gratis de arrancar la historia con una lectura real. Si lo deja vacío, el alta sigue funcionando igual y el dato puede cargarse después desde el detalle.
+- **DEALERSHIP (PROD-016).** Sin cambios: **"Kilometraje inicial"**, obligatorio (alta de 0 km, D-148 del registro de backend).
+
+Ambos contextos envían el mismo campo de contrato, `initialMileage`; el **copy y la obligatoriedad** son lo que cambia. Al persistirse, el backend lo guarda como la **primera lectura del odómetro** con `source=owner` (PERSONAL) o `source=dealership` (DEALERSHIP) y su registro de auditoría — es decir, el dato aparece en el historial del vehículo, no como un atributo suelto.
+
+**Qué NO se hizo.** El campo no es obligatorio en PERSONAL: exigirlo en el alta mataría conversión (muchos usuarios no recuerdan el número exacto) y contradice el principio de que el producto registra **lecturas con atribución**, no números perfectos.
+
+**Referencias.** `api-follow-app/DECISION-REGISTER.md` D-206 (backend) y D-148 (obligatoriedad en concesionaria).
+
+---
+
 ### FR-001 — Solo opciones aplicables
 
 **Estado:** `ACCEPTED`
@@ -369,7 +403,7 @@ Detectadas al verificar el código durante el análisis que originó este regist
 
 | ID        | El baseline afirma                                   | Realidad verificada                                                                  |
 | --------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| BASE-001  | Active Context "NO IMPLEMENTADO"                     | **Implementado**: `src/lib/active-context.ts`, `useActiveContext()`, selectores, headers `X-Context-Type`/`X-Context-Id`. Único gap: no persiste tras refresh |
+| BASE-001  | Active Context "NO IMPLEMENTADO"                     | **Implementado**: `src/lib/active-context.ts`, `useActiveContext()`, selectores, headers `X-Context-Type`/`X-Context-Id`. Persistencia UX en `sessionStorage` desde 2026-10-29 (D-021 parcial) |
 | BASE-002  | `usePermissions()` existe                            | **No existe**. Real: `src/lib/admin-access.ts` (`hasAdminAccess`, `can`, `hasRole`) + `useAuth()` |
 | BASE-003  | `src/lib/validations.ts` existe                      | **No existe**. Schemas distribuidos por dominio                                      |
 | BASE-004  | "No hay test runner, archivos, ni configuración"     | **Falso**. `vitest.config.ts`, scripts `test`/`test:watch`, **36 archivos de test** en carpetas `__test__/` (singular) |
@@ -389,7 +423,7 @@ Actualizado tras la revisión de arquitectura del Backend Tech Lead (2026-10-02)
 | ID       | Asunto                                                                              | Responsable | Bloquea                              |
 | -------- | ----------------------------------------------------------------------------------- | ----------- | ------------------------------------ |
 | SEC-001  | Validación server-side de `X-Context-Type` / `X-Context-Id`                          | Security    | FR-001 parcialmente: el frontend puede leer el contexto, pero la frontera de seguridad es backend |
-| SEC-002  | Persistencia del contexto activo entre refreshes                                     | Tech Lead   | Estabilidad de FR-001 tras refresh    |
+| SEC-002  | Persistencia del contexto activo entre refreshes                                     | Tech Lead   | Estabilidad de FR-001 tras refresh. **Parcial 2026-10-29**: sessionStorage UX; cookie httpOnly sigue pendiente |
 | SEC-003  | Exposición de permisos efectivos en `/auth/me`                                       | Backend     | FR-004 opción 1; hoy solo queda la 2  |
 | BE-001   | **10** permisos ausentes del seed (no 4): los 4 `workshop.*` más `admin.workshops.branches`, `admin.workshops.roles`, `admin.specialties.list/create/update/delete` | Backend | FR-005; y **7 endpoints del panel admin que hoy devuelven 403 en producción** |
 | BE-002   | Endpoints de sucursal: listar con inactivas, editar, cambiar estado, leer horarios  | Backend     | Gestión completa de sucursales        |

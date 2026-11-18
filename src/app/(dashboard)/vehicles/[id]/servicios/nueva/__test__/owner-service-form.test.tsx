@@ -24,6 +24,12 @@ import { clearWorkshop, selectWorkshop } from "@/lib/active-context";
 const mockCreateOwner = vi.fn();
 const mockCreateOwnerWithFiles = vi.fn();
 const mockSearchWorkshops = vi.fn();
+const mockListCatalog = vi.fn();
+
+const emptyCatalogPage = {
+  data: [],
+  meta: { total: 0, page: 1, limit: 4, totalPages: 0 },
+};
 
 vi.mock("@/lib/api", () => ({
   careEpisodeApi: {
@@ -33,6 +39,7 @@ vi.mock("@/lib/api", () => ({
   },
   workshopApi: {
     searchWorkshops: (...args: unknown[]) => mockSearchWorkshops(...args),
+    listCatalog: (...args: unknown[]) => mockListCatalog(...args),
   },
 }));
 
@@ -64,7 +71,22 @@ vi.mock("@/components/ui/card", () => ({
   ),
 }));
 vi.mock("@/components/ui/input", () => ({
-  Input: (props: React.ComponentProps<"input">) => <input {...props} />,
+  // Espejo del `sanitize` de la implementación real (ver components/ui/input).
+  Input: ({
+    sanitize,
+    onChange,
+    ...props
+  }: React.ComponentProps<"input"> & { sanitize?: "digits" }) => (
+    <input
+      {...props}
+      onChange={(event) => {
+        if (sanitize === "digits") {
+          event.target.value = event.target.value.replace(/\D/g, "");
+        }
+        onChange?.(event);
+      }}
+    />
+  ),
 }));
 vi.mock("@/components/ui/label", () => ({
   Label: ({ children, ...props }: React.ComponentProps<"label">) => (
@@ -102,6 +124,9 @@ let OwnerServiceFormPage: React.ComponentType;
 beforeEach(async () => {
   vi.clearAllMocks();
   clearWorkshop();
+  // Catálogo vacío por defecto: las sugerencias no interfieren con los
+  // tests existentes (cada test que las necesita define su propia página).
+  mockListCatalog.mockResolvedValue(emptyCatalogPage);
   const mod = await import(
     "@/app/(dashboard)/vehicles/[id]/servicios/nueva/page"
   );
@@ -112,6 +137,20 @@ afterEach(() => {
   vi.restoreAllMocks();
   clearWorkshop();
 });
+
+/** Abre una sección (una sola permanece abierta a la vez). */
+async function openSection(
+  user: ReturnType<typeof userEvent.setup>,
+  name: RegExp,
+) {
+  await user.click(screen.getByRole("button", { name }));
+}
+const openServicio = (user: ReturnType<typeof userEvent.setup>) =>
+  openSection(user, /^servicio/i);
+const openEvidencia = (user: ReturnType<typeof userEvent.setup>) =>
+  openSection(user, /^evidencia/i);
+const openTaller = (user: ReturnType<typeof userEvent.setup>) =>
+  openSection(user, /^taller responsable/i);
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -128,8 +167,9 @@ async function fillServiceForm(
   user: ReturnType<typeof userEvent.setup>,
   overrides: { title?: string; date?: string } = {},
 ) {
-  const title = overrides.title ?? "Cambio de aceite + 2 neumáticos";
+  const title = overrides.title ?? "Cambio de aceite";
   const date = overrides.date ?? "2026-06-15";
+  await openServicio(user);
   await user.type(screen.getByLabelText(/título del servicio/i), title);
   fireEvent.change(screen.getByLabelText(/fecha del servicio/i), {
     target: { value: date },
@@ -139,12 +179,37 @@ async function fillServiceForm(
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("Registrar servicio page (iteración 2-2)", () => {
+  it("con contexto WORKSHOP el back-link va a /atenciones (Volver a atenciones)", async () => {
+    selectWorkshop("w1");
+    renderPage();
+
+    const back = await screen.findByRole("link", {
+      name: "Volver a atenciones",
+    });
+    expect(back).toHaveAttribute("href", "/atenciones");
+    expect(
+      screen.queryByRole("link", { name: /volver al vehículo/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("en PERSONAL (sin taller) el back-link conserva /vehicles/:id (Volver al vehículo)", async () => {
+    renderPage();
+
+    const back = await screen.findByRole("link", {
+      name: "Volver al vehículo",
+    });
+    expect(back).toHaveAttribute("href", "/vehicles/v1");
+    expect(
+      screen.queryByRole("link", { name: /volver a atenciones/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("blocks the page when a WORKSHOP context is active (RF-1: 403 si el POST corre en WORKSHOP)", async () => {
     selectWorkshop("w1");
     renderPage();
 
     expect(
-      await screen.findByText(/volvé a "Personal" en el selector del header/i),
+      await screen.findByText(/limpiá el contexto activo con la ✕ del chip/i),
     ).toBeInTheDocument();
     expect(mockSearchWorkshops).not.toHaveBeenCalled();
     expect(mockCreateOwner).not.toHaveBeenCalled();
@@ -160,6 +225,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     await fillServiceForm(user);
     await user.type(screen.getByLabelText(/kilometraje/i), "18500");
     await user.type(screen.getByLabelText(/notas/i), "Aceite 5W30");
+    await openTaller(user);
 
     // Búsqueda (≥2 chars) → selección del resultado (nombre + ciudad)
     await user.type(
@@ -180,17 +246,17 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     await screen.findByRole("dialog");
     await user.click(screen.getByRole("button", { name: /confirmar/i }));
 
-    // Mensaje de confianza unverified (D-064)
+    // Mensaje de confianza unverified (D-064) + rechazo (diseño aprobado)
     expect(
       await screen.findByText(
-        /quedará como "Registrado por el propietario" hasta que Lubricentro Central lo verifique/i,
+        /quedará como "Registrado por el propietario" hasta que Lubricentro Central lo verifique o lo rechace/i,
       ),
     ).toBeInTheDocument();
 
     expect(mockCreateOwner).toHaveBeenCalledTimes(1);
     expect(mockCreateOwner).toHaveBeenCalledWith({
       vehicleId: "v1",
-      title: "Cambio de aceite + 2 neumáticos",
+      title: "Cambio de aceite",
       serviceDate: "2026-06-15",
       workshopId: "w1",
       mileageIn: 18500,
@@ -205,6 +271,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
 
     await user.click(screen.getByRole("button", { name: /otro taller/i }));
     await user.type(
@@ -229,7 +296,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     expect(mockCreateOwner).toHaveBeenCalledTimes(1);
     expect(mockCreateOwner).toHaveBeenCalledWith({
       vehicleId: "v1",
-      title: "Cambio de aceite + 2 neumáticos",
+      title: "Cambio de aceite",
       serviceDate: "2026-06-15",
       workshopName: "Taller de la esquina",
     });
@@ -253,6 +320,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
 
     await user.click(screen.getByRole("button", { name: /registrar servicio/i }));
 
@@ -272,6 +340,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
 
     await user.type(
       screen.getByLabelText(/buscar taller por nombre/i),
@@ -299,7 +368,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     ).toBeInTheDocument();
     expect(mockCreateOwner).toHaveBeenCalledWith({
       vehicleId: "v1",
-      title: "Cambio de aceite + 2 neumáticos",
+      title: "Cambio de aceite",
       serviceDate: "2026-06-15",
       workshopName: "Taller de la esquina",
     });
@@ -318,6 +387,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
     await user.type(
       screen.getByLabelText(/buscar taller por nombre/i),
       "Lubricentro",
@@ -349,7 +419,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     expect(mockCreateOwner).toHaveBeenCalledTimes(2);
     expect(mockCreateOwner).toHaveBeenNthCalledWith(1, {
       vehicleId: "v1",
-      title: "Cambio de aceite + 2 neumáticos",
+      title: "Cambio de aceite",
       serviceDate: "2026-06-15",
       workshopId: "w1",
     });
@@ -367,6 +437,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
     await user.type(
       screen.getByLabelText(/buscar taller por nombre/i),
       "Lubricentro",
@@ -396,6 +467,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
     await user.type(
       screen.getByLabelText(/buscar taller por nombre/i),
       "Lubricentro",
@@ -421,6 +493,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
     await user.click(screen.getByRole("button", { name: /otro taller/i }));
     await user.type(
       screen.getByLabelText(/nombre del taller/i),
@@ -444,6 +517,7 @@ describe("Registrar servicio page (iteración 2-2)", () => {
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
     await user.click(screen.getByRole("button", { name: /otro taller/i }));
     await user.type(
       screen.getByLabelText(/nombre del taller/i),
@@ -461,7 +535,8 @@ describe("Registrar servicio page (iteración 2-2)", () => {
 
     await user.click(screen.getByRole("button", { name: /registrar otro/i }));
 
-    // Formulario de nuevo: el título volvió a estar visible y borrado.
+    // El taller quedó abierto; volver a Servicio para ver el formulario en limpio.
+    await openServicio(user);
     expect(
       screen.getByLabelText(/título del servicio/i),
     ).toBeInTheDocument();
@@ -469,6 +544,183 @@ describe("Registrar servicio page (iteración 2-2)", () => {
       screen.queryByText(/quedará como "Registrado por el propietario"/i),
     ).not.toBeInTheDocument();
     expect(mockCreateOwner).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Iteración 3 (UX): sugerencias + bottom sheet de catálogo completo ──────
+
+describe("Registrar servicio — sugerencias y listado completo (iteración 3)", () => {
+  const catalogWorkshop = (
+    id: string,
+    name: string,
+    city: string | null = null,
+  ) => ({ id, name, logoUrl: null, city });
+
+  function mockCatalog({
+    suggestions = [] as ReturnType<typeof catalogWorkshop>[],
+    pages = {} as Record<number, ReturnType<typeof catalogWorkshop>[]>,
+    total = 0,
+    totalPages = 1,
+  } = {}) {
+    mockListCatalog.mockImplementation(
+      ({ page = 1, limit = 10 }: { page?: number; limit?: number } = {}) => {
+        if (limit === 4 && page === 1) {
+          return Promise.resolve({
+            data: suggestions,
+            meta: {
+              total: suggestions.length,
+              page: 1,
+              limit: 4,
+              totalPages: suggestions.length > 0 ? 1 : 0,
+            },
+          });
+        }
+        const data = pages[page] ?? [];
+        return Promise.resolve({
+          data,
+          meta: { total, page, limit: 10, totalPages },
+        });
+      },
+    );
+  }
+
+  it("muestra sugerencias del catálogo sin escribir y permite seleccionar una", async () => {
+    const user = userEvent.setup();
+    mockCatalog({
+      suggestions: [catalogWorkshop("w-s1", "Taller Sugerido", "Rosario")],
+    });
+
+    renderPage();
+    await openTaller(user);
+
+    const suggestion = await screen.findByRole("button", {
+      name: /Taller Sugerido/,
+    });
+    await user.click(suggestion);
+
+    expect(screen.getByTestId("workshop-selected")).toHaveTextContent(
+      "Taller Sugerido",
+    );
+    expect(screen.getByText("Registrado en Autentia")).toBeInTheDocument();
+    // Se eligió de la app: nunca se envía workshopName.
+    expect(mockListCatalog).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, limit: 4 }),
+    );
+  });
+
+  it("el bottom sheet lista el catálogo y 'Cargar más' trae la página siguiente", async () => {
+    const user = userEvent.setup();
+    mockCatalog({
+      total: 3,
+      totalPages: 2,
+      pages: {
+        1: [
+          catalogWorkshop("w1", "Taller Uno", "Córdoba"),
+          catalogWorkshop("w2", "Taller Dos"),
+        ],
+        2: [catalogWorkshop("w3", "Taller Tres")],
+      },
+    });
+
+    renderPage();
+    await openTaller(user);
+
+    await user.click(
+      screen.getByRole("button", { name: /ver listado completo/i }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: /talleres en autentia/i }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Taller Uno")).toBeInTheDocument();
+    expect(screen.getByText("Taller Dos")).toBeInTheDocument();
+    expect(screen.getByText(/mostrando 2 de 3/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /cargar más/i }));
+
+    expect(await screen.findByText("Taller Tres")).toBeInTheDocument();
+    expect(screen.getByText(/mostrando 3 de 3/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /cargar más/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("seleccionar un taller en el bottom sheet lo marca como registrado y cierra el sheet", async () => {
+    const user = userEvent.setup();
+    mockCatalog({
+      total: 1,
+      totalPages: 1,
+      pages: { 1: [catalogWorkshop("w1", "Taller Uno", "Córdoba")] },
+    });
+
+    renderPage();
+    await openTaller(user);
+
+    await user.click(
+      screen.getByRole("button", { name: /seleccionar de la lista/i }),
+    );
+    await user.click(await screen.findByRole("button", { name: /Taller Uno/ }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("workshop-selected")).toHaveTextContent(
+      "Taller Uno",
+    );
+    expect(screen.getByText("Registrado en Autentia")).toBeInTheDocument();
+  });
+
+  it("sin resultados en el sheet permite pasar el texto a 'taller libre'", async () => {
+    const user = userEvent.setup();
+    mockCatalog({ total: 0, totalPages: 0, pages: { 1: [] } });
+    mockSearchWorkshops.mockResolvedValue([]);
+
+    renderPage();
+    await openTaller(user);
+
+    await user.click(
+      screen.getByRole("button", { name: /ver listado completo/i }),
+    );
+    await user.type(
+      screen.getByLabelText(/buscar en el listado de talleres/i),
+      "Taller Fantasma",
+    );
+
+    expect(
+      await screen.findByText(/no encontramos talleres/i),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /como taller libre/i }),
+    );
+
+    // Cambia a modo texto libre con el nombre precargado.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/nombre del taller/i)).toHaveValue(
+      "Taller Fantasma",
+    );
+    expect(screen.getByText("Taller libre")).toBeInTheDocument();
+  });
+
+  it("mantiene el taller libre como alternativa desde la búsqueda", async () => {
+    const user = userEvent.setup();
+    mockCatalog({ suggestions: [] });
+
+    renderPage();
+    await openTaller(user);
+
+    await user.click(
+      screen.getByRole("button", { name: /usar otro taller/i }),
+    );
+
+    expect(screen.getByLabelText(/nombre del taller/i)).toBeInTheDocument();
+    expect(screen.getByText("Taller libre")).toBeInTheDocument();
+
+    // Y permite volver a la búsqueda.
+    await user.click(
+      screen.getByRole("button", { name: /volver a buscar en la app/i }),
+    );
+    expect(
+      screen.getByLabelText(/buscar taller por nombre/i),
+    ).toBeInTheDocument();
   });
 });
 
@@ -482,6 +734,7 @@ describe("Registrar servicio — modal de confirmación (D-074)", () => {
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
     await user.click(screen.getByRole("button", { name: /otro taller/i }));
     await user.type(
       screen.getByLabelText(/nombre del taller/i),
@@ -501,6 +754,7 @@ describe("Registrar servicio — modal de confirmación (D-074)", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(mockCreateOwner).not.toHaveBeenCalled();
     // El form sigue disponible.
+    await openServicio(user);
     expect(screen.getByLabelText(/título del servicio/i)).toBeInTheDocument();
   });
 
@@ -511,6 +765,7 @@ describe("Registrar servicio — modal de confirmación (D-074)", () => {
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
     await user.click(screen.getByRole("button", { name: /otro taller/i }));
     await user.type(
       screen.getByLabelText(/nombre del taller/i),
@@ -543,6 +798,7 @@ describe("Registrar servicio — modal de confirmación (D-074)", () => {
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
     await user.click(screen.getByRole("button", { name: /otro taller/i }));
     await user.type(
       screen.getByLabelText(/nombre del taller/i),
@@ -586,11 +842,13 @@ describe("Registrar servicio — evidencia en la creación (iteración 2-4)", ()
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
     await user.click(screen.getByRole("button", { name: /otro taller/i }));
     await user.type(
       screen.getByLabelText(/nombre del taller/i),
       "Taller de la esquina",
     );
+    await openEvidencia(user);
     await user.upload(screen.getByTestId("owner-evidence-input"), file);
 
     // Preview del archivo
@@ -631,7 +889,7 @@ describe("Registrar servicio — evidencia en la creación (iteración 2-4)", ()
       mockCreateOwnerWithFiles.mock.calls[0];
     expect(input).toMatchObject({
       vehicleId: "v1",
-      title: "Cambio de aceite + 2 neumáticos",
+      title: "Cambio de aceite",
       serviceDate: "2026-06-15",
       workshopName: "Taller de la esquina",
     });
@@ -652,6 +910,7 @@ describe("Registrar servicio — evidencia en la creación (iteración 2-4)", ()
     renderPage();
 
     await fillServiceForm(user);
+    await openTaller(user);
     await user.click(screen.getByRole("button", { name: /otro taller/i }));
     await user.type(
       screen.getByLabelText(/nombre del taller/i),
@@ -677,6 +936,7 @@ describe("Registrar servicio — evidencia en la creación (iteración 2-4)", ()
     const user = userEvent.setup({ applyAccept: false });
 
     renderPage();
+    await openEvidencia(user);
 
     await user.upload(
       screen.getByTestId("owner-evidence-input"),
@@ -695,6 +955,7 @@ describe("Registrar servicio — evidencia en la creación (iteración 2-4)", ()
     const user = userEvent.setup();
 
     renderPage();
+    await openEvidencia(user);
 
     const files = Array.from(
       { length: 6 },
@@ -709,11 +970,13 @@ describe("Registrar servicio — evidencia en la creación (iteración 2-4)", ()
     expect(mockCreateOwner).not.toHaveBeenCalled();
   });
 
-  it("regresión FileList vivo: acumula los archivos aunque limpiar el input vacíe la selección", () => {
+  it("regresión FileList vivo: acumula los archivos aunque limpiar el input vacíe la selección", async () => {
     // El FileList de un <input type="file"> es VIVO en los navegadores:
     // asignar `value = ""` vacía la selección. happy-dom no lo simula, por
     // eso el bug (leer files DESPUÉS de limpiar) pasaba invisible en test.
+    const user = userEvent.setup();
     renderPage();
+    await openEvidencia(user);
 
     const input = screen.getByTestId("owner-evidence-input");
     const file = new File(["a"], "foto-viva.jpg", { type: "image/jpeg" });

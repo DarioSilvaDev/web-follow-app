@@ -34,6 +34,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -142,6 +143,8 @@ export function WorkshopProfileForm({ workshop }: WorkshopProfileFormProps) {
       await queryClient.invalidateQueries({
         queryKey: ["workshop", workshop.id],
       });
+      // El listado `/workshops` muestra el nombre (`workshops/page.tsx:32`).
+      await queryClient.invalidateQueries({ queryKey: ["workshops-mine"] });
       reset({
         name: values.name.trim(),
         legalName: values.legalName?.trim() ?? "",
@@ -301,22 +304,12 @@ export function WorkshopProfileForm({ workshop }: WorkshopProfileFormProps) {
         </p>
       </div>
 
-      {successBanner && (
-        <p
-          role="status"
-          className="rounded-lg border border-success/40 bg-success/10 px-3 py-2 text-sm text-success-foreground"
-        >
-          {successBanner}
-        </p>
-      )}
+      {successBanner && <Callout variant="success">{successBanner}</Callout>}
 
       {submitError && (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
+        <Callout variant="destructive" role="alert">
           {submitError}
-        </p>
+        </Callout>
       )}
 
       <div className="flex justify-end">

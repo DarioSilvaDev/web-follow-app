@@ -5,8 +5,8 @@
  * NAV_ITEMS_BASE "Concesionarias", RB-10). Fuente: `GET /dealerships/mine`
  * (`dealershipApi.listMine`) — concesionarias donde el usuario es miembro
  * activo. La pertenencia/rol del usuario por concesionaria se resuelve desde
- * la sesión (`SessionUser.dealershipMemberships`, igual que el selector del
- * header — §10.4 Auth State), no desde la entidad `Dealership`.
+ * la sesión (`SessionUser.dealershipMemberships`, igual que el chip de
+ * contexto — §10.4 Auth State), no desde la entidad `Dealership`.
  *
  * Alta rápida (D-103): "Nueva concesionaria" → `/dealerships/nueva`
  * (CreateDealershipForm — incluye "yo soy el dueño", D-104, crea el member
@@ -15,9 +15,9 @@
  */
 
 import Link from "next/link";
-import { Plus, Store } from "lucide-react";
+import { Plus, RotateCw, Store } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardDescription,
@@ -63,6 +63,22 @@ export default function DealershipsPage() {
             />
           ))}
         </div>
+      ) : mineQuery.isError ? (
+        <EmptyState
+          icon={Store}
+          title="No se pudieron cargar tus concesionarias"
+          description="Ocurrió un error inesperado. Intentá nuevamente."
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void mineQuery.refetch()}
+            >
+              <RotateCw className="mr-1.5 h-3.5 w-3.5" />
+              Reintentar
+            </Button>
+          }
+        />
       ) : dealerships.length === 0 ? (
         <EmptyState
           icon={Store}

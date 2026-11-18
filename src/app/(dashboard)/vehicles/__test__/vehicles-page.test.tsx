@@ -2,11 +2,11 @@
  * Tests for the "Mis vehículos" list page (/vehicles).
  *
  * Critical behaviors (F-010 §8 / §10 + F-012):
- * - Renders the paginated list (plate, catalog triplet, year, color).
- * - Renders "—" when brand/model/version are missing (D-038 / §9 tolerance).
+ * - Renders the paginated list (patente, catalog triplet, year, color).
+ * - Renders "—" when brand/model are missing (D-038 / §9 tolerance).
  * - Empty state with CTA "Registrar vehículo" → /vehicles/new.
  * - Load error shows a message and a retry action.
- * - F-012: search by plate with 300ms debounce, dynamic queryKey,
+ * - F-012: search by patente with 300ms debounce, dynamic queryKey,
  *   keepPreviousData, branched empty states (with-q vs without-q).
  * - F-013: whole-card navigation → /vehicles/:id (list is the entry point).
  */
@@ -81,7 +81,6 @@ function makeVehicle(overrides: Record<string, unknown> = {}) {
     licensePlate: "ABC123",
     brand: "Toyota",
     model: "Corolla",
-    version: "XEI",
     manufactureYear: 2020,
     modelYear: 2021,
     color: "Rojo",
@@ -119,7 +118,7 @@ function renderPage() {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("Vehicles list page", () => {
-  it("renders vehicles with plate, catalog triplet, year and color", async () => {
+  it("renders vehicles with patente, catalog (marca + modelo), year and color", async () => {
     mockListVehicles.mockResolvedValue({
       data: [makeVehicle()],
       meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
@@ -128,18 +127,17 @@ describe("Vehicles list page", () => {
     renderPage();
 
     expect(await screen.findByText("ABC123")).toBeInTheDocument();
-    expect(screen.getByText("Toyota Corolla XEI")).toBeInTheDocument();
+    expect(screen.getByText("Toyota Corolla")).toBeInTheDocument();
     expect(screen.getByText("2020 / 2021")).toBeInTheDocument();
     expect(screen.getByText("Rojo")).toBeInTheDocument();
   });
 
-  it("renders '—' when brand/model/version, years and color are missing", async () => {
+  it("renders '—' when brand/model, years and color are missing", async () => {
     mockListVehicles.mockResolvedValue({
       data: [
         makeVehicle({
           brand: null,
           model: null,
-          version: null,
           manufactureYear: null,
           modelYear: null,
           color: null,
@@ -151,8 +149,8 @@ describe("Vehicles list page", () => {
     renderPage();
 
     expect(await screen.findByText("ABC123")).toBeInTheDocument();
-    // D-038: la UI muestra "—" ante ausencia de marca/modelo/versión y de
-    // años (card: `catalogLabel` + `yearsLabel`). El color ausente OCULTA la
+    // D-038: la UI muestra "—" ante ausencia de marca/modelo y de años
+    // (card: `catalogLabel` + `yearsLabel`). El color ausente OCULTA la
     // fila (patrón consistente con header y ficha del detalle — no "—").
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText(/color:/i)).not.toBeInTheDocument();
@@ -329,7 +327,55 @@ describe("Vehicles list page", () => {
   });
 });
 
-// ── F-012: search by plate ───────────────────────────────────────────────────
+// ── Cabecera rediseñada (tarjeta clara con contador) ─────────────────────────
+
+describe("Vehicles list page — header", () => {
+  it("shows the icon-only 'Registrar vehículo' link and '1 vehículo registrado' (singular)", async () => {
+    mockListVehicles.mockResolvedValue({
+      data: [makeVehicle()],
+      meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+    });
+
+    renderPage();
+
+    // El botón de la cabecera es icon-only: el nombre accesible viene del aria-label.
+    const headerCta = await screen.findAllByRole("link", {
+      name: "Registrar vehículo",
+    });
+    expect(headerCta.length).toBeGreaterThanOrEqual(1);
+    expect(headerCta[0]).toHaveAttribute("href", "/vehicles/new");
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Mis vehículos" }),
+    ).toBeInTheDocument();
+    // Esperar a que resuelva la query (el contador pasa de "00" a "01").
+    expect(await screen.findByText("1")).toBeInTheDocument();
+    expect(screen.getByText("vehículo registrado")).toBeInTheDocument();
+  });
+
+  it("shows '2 vehículos registrados' with two vehicles", async () => {
+    mockListVehicles.mockResolvedValue({
+      data: [makeVehicle(), makeVehicle({ id: "v2", licensePlate: "QWE234" })],
+      meta: { total: 2, page: 1, limit: 20, totalPages: 1 },
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("2")).toBeInTheDocument();
+    expect(screen.getByText("vehículos registrados")).toBeInTheDocument();
+  });
+
+  it("shows '0 vehículos registrados' when the list is empty", async () => {
+    mockListVehicles.mockResolvedValue({ data: [], meta: emptyMeta });
+
+    renderPage();
+
+    expect(await screen.findByText("0")).toBeInTheDocument();
+    expect(screen.getByText("vehículos registrados")).toBeInTheDocument();
+  });
+});
+
+// ── F-012: search by patente ───────────────────────────────────────────────────
 
 /**
  * Flush fake timers + microtasks inside act. Needed because:
@@ -363,7 +409,7 @@ describe("Vehicles list page — search (F-012)", () => {
 
     // fireEvent is sync (no internal timers) — fake timers only drive the
     // useDebounce setTimeout.
-    fireEvent.change(screen.getByPlaceholderText("Buscar por placa…"), {
+    fireEvent.change(screen.getByPlaceholderText("Buscar por patente (ej. AAA111 o AA111AA)"), {
       target: { value: "SMK" },
     });
     await settle();
@@ -396,13 +442,13 @@ describe("Vehicles list page — search (F-012)", () => {
     expect(screen.getByText("ABC123")).toBeInTheDocument();
     await settle();
 
-    fireEvent.change(screen.getByPlaceholderText("Buscar por placa…"), {
+    fireEvent.change(screen.getByPlaceholderText("Buscar por patente (ej. AAA111 o AA111AA)"), {
       target: { value: "SMK" },
     });
     await settle();
 
     expect(
-      screen.getByText("No se encontraron vehículos con esa placa"),
+      screen.getByText("No se encontraron vehículos con esa patente"),
     ).toBeInTheDocument();
 
     // CTA "Limpiar búsqueda" is the button with visible text (the input X
@@ -419,7 +465,7 @@ describe("Vehicles list page — search (F-012)", () => {
     expect(mockListVehicles).toHaveBeenCalledWith({ page: 1, limit: 20 });
   });
 
-  it("does NOT filter with a 1-character plate (effectiveQ '')", async () => {
+  it("does NOT filter with a 1-character patente (effectiveQ '')", async () => {
     vi.useFakeTimers();
     mockListVehicles.mockResolvedValue({
       data: [makeVehicle()],
@@ -430,7 +476,7 @@ describe("Vehicles list page — search (F-012)", () => {
     await settle();
     expect(screen.getByText("ABC123")).toBeInTheDocument();
 
-fireEvent.change(screen.getByPlaceholderText("Buscar por placa…"), {
+fireEvent.change(screen.getByPlaceholderText("Buscar por patente (ej. AAA111 o AA111AA)"), {
       target: { value: "SMK" },
     });
     await settle();

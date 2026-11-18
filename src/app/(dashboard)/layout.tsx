@@ -1,36 +1,46 @@
 "use client";
 
+/**
+ * Layout del shell autenticado — sidebar desktop + header compacto +
+ * drawer mobile.
+ *
+ * Navegación (config en `nav-config.ts`, decisiones PM de esta iteración):
+ *   Inicio · Mis vehículos · Talleres · Concesionarias · Transferencias ·
+ *   Administración · Mi perfil
+ * - "Talleres" solo si `workshopMemberships.length > 0`;
+ * - "Concesionarias" solo si `dealershipMemberships.length > 0`;
+ * - "Administración" solo si `hasAdminAccess(user)` (workspace admin).
+ * - NO hay items de Atenciones en el nav (F-023: son quick actions del
+ *   dashboard, no del shell).
+ * - "Historial" y "Documentos" NO son items de nav: son vistas del vehículo
+ *   (`/vehicles/[id]`), no módulos globales (no se inventan rutas).
+ *
+ * El contexto activo (WORKSHOP/DEALERSHIP) se deriva de la ruta vía
+ * `useRouteDerivedContext` (detalles `/dealerships/<uuid>` y
+ * `/workshops/<uuid>`); el chip `ContextChip` lo muestra y permite volver
+ * a PERSONAL con la ✕. "Inicio" (/dashboard) NO limpia el contexto.
+ *
+ * Notas de contrato con tests (NO romper `dashboard-layout.test.tsx`):
+ * - Un SOLO link "Autentia" en el DOM (marca del sidebar; en el header
+ *   mobile es texto plano, no link).
+ * - El drawer se renderiza solo cuando está abierto → no duplica links.
+ * - El layout NO usa `useSearchParams`/`vehicleApi` (el test de
+ *   `next/navigation`/`@/lib/api` solo mockea lo mínimo).
+ */
+
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, User, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ContextSelector } from "@/components/layout/context-selector";
-import { useActiveContext } from "@/hooks/use-active-context";
+import { ContextChip } from "@/components/layout/context-chip";
+import { AppSidebar } from "@/components/layout/app-sidebar";
+import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
+import { AccountMenu } from "@/components/layout/account-menu";
+import { buildNavSections } from "@/components/layout/nav-config";
 import { useAuth } from "@/hooks/use-auth";
+import { useRouteDerivedContext } from "@/hooks/use-route-derived-context";
 import { hasAdminAccess } from "@/lib/admin-access";
 import { authApi } from "@/lib/api";
-import { cn } from "cn";
-
-const NAV_ITEMS_BASE = [
-  { href: "/dashboard", label: "Inicio" },
-  // Fase 1 / D-078: panel de transferencias (base — owner en contexto PERSONAL).
-  { href: "/transferencias", label: "Transferencias" },
-  // Milestone consignación (D-105 / spec §8): gestión de concesionarias.
-  { href: "/dealerships", label: "Concesionarias" },
-] as const;
-
-const NAV_ITEMS_WORKSHOP = [
-  // F-023 RF-6: orden Atenciones → Nueva atención → Verificaciones.
-  { href: "/atenciones", label: "Atenciones" },
-  { href: "/atenciones/nueva", label: "Nueva atención" },
-  { href: "/atenciones/verificaciones", label: "Verificaciones" },
-] as const;
-
-// Hrefs que se activan SOLO en match exacto del pathname (RF-6): evita que
-// "Atenciones" (/atenciones) se marque activa dentro de /atenciones/nueva ni
-// /atenciones/verificaciones. Mismo criterio que /dashboard.
-const EXACT_MATCH_HREFS = new Set(["/dashboard", "/atenciones"]);
 
 export default function DashboardLayout({
   children,
@@ -40,8 +50,18 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { status, user, clearSession } = useAuth();
-  const activeContext = useActiveContext();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Contexto activo derivado de la ruta (ruta explícita > contexto vigente).
+  useRouteDerivedContext();
+
+  // Cerrar el drawer mobile al cambiar de ruta — patrón de ajuste durante
+  // render (React: "adjusting state when a prop changes"), sin effect.
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
+    if (mobileOpen) setMobileOpen(false);
+  }
 
   // Session lost (expired cookies, refresh failure) → redirect to login
   // preserving the intended destination (RF-3).
@@ -52,11 +72,6 @@ export default function DashboardLayout({
       );
     }
   }, [status, router]);
-
-  // Close mobile menu on route change
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
 
   const handleLogout = async () => {
     try {
@@ -76,169 +91,87 @@ export default function DashboardLayout({
         .toUpperCase()
     : null;
 
-  const isWorkshop = activeContext?.type === "WORKSHOP";
+  const userName = user
+    ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "Mi cuenta"
+    : "Mi cuenta";
 
   // PM §29 (D-105): "Concesionarias" solo se renderiza cuando el usuario
   // tiene `dealershipMemberships` (datos de sesión — no permisos genéricos).
-  // NAV_ITEMS_BASE se mantiene como fuente canónica; el acceso del header al
-  // ContextSelector ya es condicional: sin membresías no renderiza nada
-  // (§8 RB-10).
-  const hasDealerships = (user?.dealershipMemberships?.length ?? 0) > 0;
-
-  // Onboarding administrado de concesionaria: "Administración" (workspace
-  // admin) solo para roles/permisos de plataforma (UX — el backend enforcea).
-  const isAdmin = hasAdminAccess(user);
-
-  const isActive = (href: string) => {
-    if (EXACT_MATCH_HREFS.has(href)) return pathname === href;
-    return pathname.startsWith(href);
-  };
-
-  const navLinks = [
-    ...NAV_ITEMS_BASE,
-    ...(isWorkshop ? NAV_ITEMS_WORKSHOP : []),
-    ...(isAdmin ? [{ href: "/admin", label: "Administración" }] : []),
-  ].filter(
-    (item) => item.href !== "/dealerships" || hasDealerships,
-  );
+  const sections = buildNavSections({
+    hasWorkshops: (user?.workshopMemberships?.length ?? 0) > 0,
+    hasDealerships: (user?.dealershipMemberships?.length ?? 0) > 0,
+    // Onboarding administrado de concesionaria: "Administración" (workspace
+    // admin) solo para roles/permisos de plataforma (UX — el backend enforcea).
+    isAdmin: hasAdminAccess(user),
+  });
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border bg-background sticky top-0 z-40">
-        <div className="mx-auto flex h-12 max-w-screen-xl items-center justify-between px-4">
-          {/* Logo */}
-          <Link
-            href="/dashboard"
-            className="text-base font-bold tracking-tight text-foreground"
-          >
-            Autentia
-          </Link>
+    <div className="min-h-screen">
+      {/* Sidebar desktop (≥ lg) — en mobile queda fuera del árbol de
+          accesibilidad vía `hidden`; su rol lo cumple el drawer. */}
+      <AppSidebar
+        sections={sections}
+        pathname={pathname}
+        initials={initials}
+        userName={userName}
+        onLogout={handleLogout}
+      />
 
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1">
-            <ContextSelector />
-            {navLinks.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "px-3 py-1.5 text-sm rounded-md transition-colors",
-                  isActive(item.href)
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
+      <div className="flex min-h-screen flex-col lg:pl-60">
+        {/* Header compacto */}
+        <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
+          <div className="mx-auto flex h-14 w-full max-w-screen-xl items-center justify-between gap-3 px-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                id="mobile-nav-trigger"
+                onClick={() => setMobileOpen(!mobileOpen)}
+                className="h-11 w-11 shrink-0 lg:hidden"
+                aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+                aria-expanded={mobileOpen}
+                aria-controls="mobile-nav-drawer"
+              >
+                {mobileOpen ? (
+                  <X className="h-5 w-5" aria-hidden="true" />
+                ) : (
+                  <Menu className="h-5 w-5" aria-hidden="true" />
                 )}
-              >
-                {item.label}
-              </Link>
-            ))}
-            <Link
-              href="/profile"
-              className={cn(
-                "px-3 py-1.5 text-sm rounded-md transition-colors",
-                pathname === "/profile"
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
-              )}
-            >
-              Mi perfil
-            </Link>
+              </Button>
+              {/* Marca en mobile: texto plano (el link "Autentia" vive en
+                  el sidebar; no se duplica el nombre accesible). */}
+              <span className="text-base font-bold tracking-tight lg:hidden">
+                Autentia
+              </span>
+              <ContextChip />
+            </div>
 
-            {/* User avatar + logout */}
-            {user && (
-              <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
-                <div
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-medium"
-                  title={`${user.firstName} ${user.lastName}`}
-                >
-                  {initials || <User className="h-3.5 w-3.5" />}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleLogout}
-                  title="Cerrar sesión"
-                  className="h-7 w-7"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )}
-          </nav>
-
-          {/* Mobile hamburger */}
-          <div className="flex items-center gap-2 md:hidden">
-            <ContextSelector />
-            {user && (
-              <div
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-medium"
-                title={`${user.firstName} ${user.lastName}`}
-              >
-                {initials || <User className="h-3.5 w-3.5" />}
-              </div>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setMobileOpen(!mobileOpen)}
-              className="h-8 w-8"
-              aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
-            >
-              {mobileOpen ? (
-                <X className="h-4 w-4" />
-              ) : (
-                <Menu className="h-4 w-4" />
-              )}
-            </Button>
+            <AccountMenu
+              userName={userName}
+              initials={initials}
+              onLogout={handleLogout}
+            />
           </div>
-        </div>
+        </header>
 
-        {/* Mobile drawer */}
-        {mobileOpen && (
-          <div className="md:hidden border-t border-border bg-background">
-            <nav className="flex flex-col px-4 py-3 gap-1">
-              {navLinks.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "px-3 py-2 text-sm rounded-md transition-colors",
-                    isActive(item.href)
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                  )}
-                >
-                  {item.label}
-                </Link>
-              ))}
-              <Link
-                href="/profile"
-                className={cn(
-                  "px-3 py-2 text-sm rounded-md transition-colors",
-                  pathname === "/profile"
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                )}
-              >
-                Mi perfil
-              </Link>
-              <div className="border-t border-border mt-2 pt-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleLogout}
-                  className="justify-start gap-2 text-muted-foreground"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Cerrar sesión
-                </Button>
-              </div>
-            </nav>
+        <main className="flex-1 bg-muted/30">
+          <div className="mx-auto w-full max-w-screen-xl px-4 py-6">
+            {children}
           </div>
-        )}
-      </header>
-      <main className="flex-1 bg-muted/30">
-        <div className="mx-auto max-w-screen-xl px-4 py-6">{children}</div>
-      </main>
+        </main>
+      </div>
+
+      {/* Drawer mobile — solo se monta cuando está abierto. */}
+      <MobileNavDrawer
+        open={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        sections={sections}
+        pathname={pathname}
+        initials={initials}
+        userName={userName}
+        onLogout={handleLogout}
+      />
     </div>
   );
 }

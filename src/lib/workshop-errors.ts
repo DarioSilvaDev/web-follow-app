@@ -15,6 +15,15 @@
  *   tiene el permiso.
  * - POST  /api/workshops/:id/branches  → 201 `WorkshopBranch` creada.
  *   `workshop.branch.create`. 404 si el taller no existe; 403 sin permiso.
+ * - GET   /api/workshops/:id/specialties → 200 `[{id, code, name,
+ *   description}]`. `WorkshopGuard` (membresía activa, sin permiso puntual).
+ * - POST  /api/workshops/:id/specialties → 201 `SpecialtyResponseDto`.
+ *   `workshop.specialties.manage`. 404 si falta la especialidad o el taller;
+ *   409 si ya está asignada.
+ * - DELETE /api/workshops/:id/specialties/:specialtyId → 200 sin body.
+ *   Mismo permiso. 404 si la asociación no existe.
+ * - GET   /api/specialties (catálogo público) → 200
+ *   `SpecialtyResponseDto[]`. JwtAuthGuard: 401 sin sesión.
  *
  * El frontend NUNCA muestra el mensaje crudo del backend (patrón
  * `src/lib/transfer-errors.ts` / `src/lib/admin-errors.ts`, y
@@ -117,4 +126,55 @@ export function resolveCreateBranchError(error: unknown): string {
     return "Error interno del servidor. Intentá más tarde.";
   }
   return "No se pudo agregar la sucursal. Intentá nuevamente.";
+}
+
+/** Carga de especialidades (GET /workshops/:id/specialties y GET /specialties). */
+export function resolveListSpecialtiesError(error: unknown): string {
+  const s = status(error);
+
+  if (s === 403) {
+    return "No tenés acceso a este taller. Tu membresía puede no estar activa.";
+  }
+  if (s === 404) {
+    return "El taller no existe o fue eliminado.";
+  }
+  if (s === 401) {
+    return "Tu sesión expiró. Volvé a iniciar sesión.";
+  }
+  if (s && s >= 500) {
+    return "Error interno del servidor. Intentá más tarde.";
+  }
+  return "No se pudieron cargar las especialidades. Intentá nuevamente.";
+}
+
+/**
+ * Alta/baja de especialidad (POST|DELETE /workshops/:id/specialties).
+ *
+ * Copy neutro en el default porque la misma función cubre ambas operaciones:
+ * un fallo a mitad de un lote de altas puede dejar cualquiera de los dos
+ * estados pendientes de refrescar.
+ */
+export function resolveSpecialtyError(error: unknown): string {
+  const s = status(error);
+  const c = code(error);
+
+  if (s === 403) {
+    return "Necesitás permiso de administrador del taller para gestionar las especialidades.";
+  }
+  if (s === 409 || c === "CONFLICT") {
+    return "Esa especialidad ya está cargada en el taller.";
+  }
+  if (s === 404) {
+    return "La especialidad ya no está disponible. Actualizá la lista e intentá nuevamente.";
+  }
+  if (s === 400 || s === 422) {
+    return "Revisá la especialidad seleccionada e intentá nuevamente.";
+  }
+  if (s === 401) {
+    return "Tu sesión expiró. Volvé a iniciar sesión.";
+  }
+  if (s && s >= 500) {
+    return "Error interno del servidor. Intentá más tarde.";
+  }
+  return "No se pudieron actualizar las especialidades del taller. Intentá nuevamente.";
 }

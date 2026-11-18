@@ -31,6 +31,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   Car,
@@ -55,6 +56,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { selectDealership } from "@/lib/active-context";
 import { vehicleApi } from "@/lib/api";
 import { resolveQrPurpose } from "@/lib/consignment";
+import { invalidateVehicleViews, vehicleKeys } from "@/lib/query-keys";
 import {
   resolveQrAcceptErrorMessage,
   resolveQrPreviewErrorMessage,
@@ -148,6 +150,7 @@ export default function TransferQrAcceptPage() {
   const params = useParams<{ token: string }>();
   const token = params?.token;
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { status, user } = useAuth();
   const activeContext = useActiveContext();
 
@@ -206,6 +209,31 @@ export default function TransferQrAcceptPage() {
         selectDealership(dealershipId);
       }
       await vehicleApi.acceptTransferQr(token);
+      // Invalidación (misma clase de bug que el alta de vehículo): el CTA
+      // "Ver mis vehículos" navega a `/vehicles`, que con `staleTime` de 30s
+      // podía no incluir el vehículo recién recibido. Una sola llamada cubre
+      // lista, dashboard, transferencias y las exhibiciones bajo `["vehicles"]`.
+      void invalidateVehicleViews(queryClient);
+      if (preview) {
+        // Detalle/historial del vehículo: cambió de titular.
+        void queryClient.invalidateQueries({
+          queryKey: vehicleKeys.detail(preview.vehicle.id),
+        });
+        // Venta / devolución: la concesionaria de origen deja de exhibirlo.
+        if (preview.fromDealership) {
+          void queryClient.invalidateQueries({
+            queryKey: vehicleKeys.dealershipExhibition(
+              preview.fromDealership.id,
+            ),
+          });
+        }
+      }
+      // Toma: la concesionaria receptora lo gana en exhibición.
+      if (resolveQrPurpose(preview) === "take" && dealershipId) {
+        void queryClient.invalidateQueries({
+          queryKey: vehicleKeys.dealershipExhibition(dealershipId),
+        });
+      }
       setDone(true);
     } catch (err: unknown) {
       setActionError(resolveQrAcceptErrorMessage(err));

@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import TransferQrAcceptPage from "@/app/transfer/qr/[token]/page";
 
@@ -66,11 +67,29 @@ beforeEach(() => {
   mockUseAuth.mockReturnValue({ status: "authenticated" });
 });
 
+/**
+ * La página invalida queries tras aceptar (el CTA navega a `/vehicles`), así
+ * que necesita un QueryClient. Se devuelve el spy para poder verificar la
+ * invalidación en el test de aceptación.
+ */
+function renderPage() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TransferQrAcceptPage />
+    </QueryClientProvider>,
+  );
+  return { invalidateSpy };
+}
+
 describe("TransferQrAcceptPage", () => {
   it("muestra el preview con vehículo y emisor, sin email", async () => {
     mockPreview.mockResolvedValue(makePreview());
 
-    render(<TransferQrAcceptPage />);
+    renderPage();
 
     expect(
       await screen.findByText("Transferencia de vehículo"),
@@ -99,7 +118,7 @@ describe("TransferQrAcceptPage", () => {
       }),
     );
 
-    render(<TransferQrAcceptPage />);
+    renderPage();
 
     expect(await screen.findByText(/@maru_g/)).toBeInTheDocument();
     expect(screen.queryByText(/María Gómez/)).not.toBeInTheDocument();
@@ -111,7 +130,7 @@ describe("TransferQrAcceptPage", () => {
     mockPreview.mockResolvedValue(makePreview());
     mockAccept.mockResolvedValue({ transferId: "t1", status: "completed" });
 
-    render(<TransferQrAcceptPage />);
+    const { invalidateSpy } = renderPage();
 
     await user.click(
       await screen.findByRole("button", { name: /aceptar y recibir vehículo/i }),
@@ -121,6 +140,16 @@ describe("TransferQrAcceptPage", () => {
     expect(
       await screen.findByText("¡Transferencia completada!"),
     ).toBeInTheDocument();
+    // El CTA navega a `/vehicles`: sin esta invalidación la lista queda stale
+    // (misma clase de bug que el alta de vehículo en contexto DEALERSHIP).
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["vehicles"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["vehicle", "v1"],
+    });
+    // QR persona→persona: no hay concesionaria que invalidar.
+    expect(invalidateSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["vehicles", "dealership"] }),
+    );
   });
 
   it("404 QR inválido/expirado: pantalla de error mapeada", async () => {
@@ -129,7 +158,7 @@ describe("TransferQrAcceptPage", () => {
       message: "QR inválido o expirado",
     });
 
-    render(<TransferQrAcceptPage />);
+    renderPage();
 
     expect(
       await screen.findByText("No se pudo abrir el QR"),
@@ -142,7 +171,7 @@ describe("TransferQrAcceptPage", () => {
   it("410 revocado: pantalla de error mapeada", async () => {
     mockPreview.mockRejectedValue({ status: 410, message: "QR revocado" });
 
-    render(<TransferQrAcceptPage />);
+    renderPage();
 
     expect(
       await screen.findByText("No se pudo abrir el QR"),
@@ -158,7 +187,7 @@ describe("TransferQrAcceptPage", () => {
       message: "QR ya utilizado",
     });
 
-    render(<TransferQrAcceptPage />);
+    renderPage();
 
     expect(
       await screen.findByText("No se pudo abrir el QR"),
@@ -176,7 +205,7 @@ describe("TransferQrAcceptPage", () => {
       message: "No podés aceptar tu propio QR",
     });
 
-    render(<TransferQrAcceptPage />);
+    renderPage();
 
     await user.click(
       await screen.findByRole("button", { name: /aceptar y recibir vehículo/i }),
@@ -193,7 +222,7 @@ describe("TransferQrAcceptPage", () => {
     mockUseAuth.mockReturnValue({ status: "unauthenticated" });
     mockPreview.mockResolvedValue(makePreview());
 
-    render(<TransferQrAcceptPage />);
+    renderPage();
 
     // El preview es público: NO redirige ni bloquea la carga (RF-7).
     expect(await screen.findByText("Toyota Corolla")).toBeInTheDocument();
@@ -220,7 +249,7 @@ describe("TransferQrAcceptPage", () => {
       makePreview({ purpose: "take", fromDealership: null }),
     );
 
-    render(<TransferQrAcceptPage />);
+    renderPage();
 
     expect(
       await screen.findByText("Recibo del vehículo en consignación"),
@@ -245,7 +274,7 @@ describe("TransferQrAcceptPage", () => {
     mockParams.mockReturnValue({});
     mockUseAuth.mockReturnValue({ status: "authenticated" });
 
-    render(<TransferQrAcceptPage />);
+    renderPage();
 
     expect(screen.getByText("QR inválido")).toBeInTheDocument();
     expect(mockPreview).not.toHaveBeenCalled();

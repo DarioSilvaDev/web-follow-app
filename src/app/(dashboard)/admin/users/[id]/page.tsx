@@ -37,6 +37,7 @@ import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { EntityNotFoundState } from "@/components/admin/entity-not-found-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import {
   Card,
   CardContent,
@@ -238,16 +239,12 @@ export default function AdminUserDetailPage() {
       <AdminBreadcrumb items={breadcrumbItems} />
 
       {banner && (
-        <p
-          role="status"
-          className={`w-full rounded-lg border px-3 py-2 text-sm ${
-            banner.tone === "success"
-              ? "border-success/40 bg-success/10 text-success-foreground"
-              : "border-destructive bg-destructive/10 text-destructive"
-          }`}
+        <Callout
+          variant={banner.tone === "success" ? "success" : "destructive"}
+          className="w-full"
         >
           {banner.text}
-        </p>
+        </Callout>
       )}
 
       <Card>
@@ -389,9 +386,9 @@ export default function AdminUserDetailPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {rolesQuery.isError && (
-            <p className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <Callout variant="destructive" role="alert">
               {resolveListAdminRolesError()}
-            </p>
+            </Callout>
           )}
 
           {detailUser.roles.length > 0 && (

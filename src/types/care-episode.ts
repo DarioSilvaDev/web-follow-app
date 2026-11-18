@@ -6,8 +6,13 @@
  * - `GET /api/care-episodes/lookup?plate=` → datos mínimos del vehículo SIN PII
  *   (RF-2): `id`, `licensePlate`, `brand`, `model`, `version`,
  *   `manufactureYear`, `modelYear`.
- * - `POST /api/care-episodes` (check-in, RF-1): body con `vehicleId`, `branchId`
- *   y opcionales del ingreso. El episodio nace en estado `open`.
+ * - `POST /api/care-episodes` (check-in legacy, RF-1): body con `vehicleId`,
+ *   `branchId` y opcionales del ingreso. El episodio nace en estado `open`.
+ * - `POST /api/care-episodes/check-in` (B-2, vigente): recibe la PATENTE y
+ *   resuelve vehículo (reutiliza o crea) + atención + contacto en una
+ *   transacción.
+ * - `GET /api/care-episodes/service-types` (B-2): catálogo de tipos de
+ *   atención filtrado por especialidades del taller.
  * - `POST /api/care-episodes/owner` (RF-1 iteración 2-2): ruta PERSONAL del
  *   propietario; el `source` es constante del path (`owner`), nunca del body
  *   (D-063).
@@ -28,9 +33,11 @@ export type CareEpisodeSource = "workshop" | "owner";
 
 /**
  * Nivel de confianza discreto (D-064): `unverified` → "Registrado por el
- * propietario"; `verified` → verificado por taller (solo talleres verifican).
+ * propietario"; `verified` → verificado por taller (solo talleres verifican);
+ * `rejected` → el taller responsable indicó que el servicio no le corresponde
+ * (estado terminal, diseño aprobado de rechazo de verificación).
  */
-export type CareEpisodeVerification = "unverified" | "verified";
+export type CareEpisodeVerification = "unverified" | "verified" | "rejected";
 
 /** GET /api/care-episodes/lookup?plate= → vehículo para el check-in. */
 export interface CareEpisodeLookupVehicle {
@@ -43,7 +50,13 @@ export interface CareEpisodeLookupVehicle {
   modelYear: number | null;
 }
 
-/** POST /api/care-episodes — body del check-in (campos expuestos en el form). */
+/**
+ * @deprecated Endpoint viejo `POST /api/care-episodes` (recibe `vehicleId`).
+ * El check-in unificado (`POST /api/care-episodes/check-in`, B-2) es el flujo
+ * vigente: resuelve el vehículo por PATENTE y lo crea si no existe. Se conserva
+ * el tipo/método porque el endpoint sigue existiendo en backend, pero la UI de
+ * `/atenciones/nueva` ya no lo usa.
+ */
 export interface CreateCareEpisodeInput {
   vehicleId: string;
   branchId: string;
@@ -51,6 +64,94 @@ export interface CreateCareEpisodeInput {
   mileageIn?: number;
   customerComplaint?: string;
   customerNotes?: string;
+}
+
+// ---------------------------------------------------------------------------
+// B-2 — Check-in unificado de taller (POST /api/care-episodes/check-in)
+//
+// Contrato verificado en `api-follow-app/src/modules/care-episodes/dto/
+// check-in.dto.ts` + `commands/check-in/check-in.handler.ts`:
+// - Recibe la PATENTE (no `vehicleId`); el server resuelve reutilizar o crear.
+// - Odómetro XOR: `mileageIn` **o** (`mileageInUnreadable` + motivo ≥3).
+// - Catálogo XOR texto libre por campo: `brandId`/`brandName`,
+//   `modelId`/`modelName` (nunca ambos). `versionId` no se expone en esta UI.
+// - `ownerPhone` opcional (par área/número; país fijo server-side).
+// ---------------------------------------------------------------------------
+
+/** Celular del propietario (dos inputs, sin país: lo fija el backend). */
+export interface CheckInOwnerPhoneInput {
+  areaCode?: string;
+  nationalNumber?: string;
+}
+
+/** POST /api/care-episodes/check-in → body. */
+export interface CheckInInput {
+  licensePlate: string;
+  branchId: string;
+  /** Catálogo (solo si se crea el vehículo). */
+  brandId?: string;
+  modelId?: string;
+  versionId?: string;
+  /** Texto libre (solo si se crea el vehículo); XOR con el id del campo. */
+  brandName?: string;
+  modelName?: string;
+  vin?: string;
+  /** Odómetro: valor numérico XOR excepción "no legible" + motivo. */
+  mileageIn?: number;
+  mileageInUnreadable?: boolean;
+  mileageInUnreadableReason?: string;
+  customerComplaint?: string;
+  customerNotes?: string;
+  internalNotes?: string;
+  /** Hasta 3 en total contando `customServiceLabel` ("Otro"). */
+  serviceTypeIds?: string[];
+  customServiceLabel?: string;
+  ownerPhone?: CheckInOwnerPhoneInput;
+}
+
+/** Estado del contacto activo del propietario (`VehicleContactStatus` Prisma). */
+export type VehicleContactStatus = "available" | "unavailable";
+
+/** POST /api/care-episodes/check-in → `{ data }` (CheckInData del handler). */
+export interface CheckInResult {
+  careEpisodeId: string;
+  vehicleId: string;
+  licensePlate: string;
+  status: string;
+  mileageIn: number | null;
+  checkedInAt: string;
+  /**
+   * Fuente de verdad del mensaje de éxito: `true` si el server creó el
+   * vehículo en esta transacción (no la rama local del lookup).
+   */
+  vehicleCreated: boolean;
+  ownerContact: {
+    status: VehicleContactStatus;
+    /** Teléfono enmascarado (`••••2268`) o `null` si no hay canal. */
+    phoneMasked: string | null;
+  };
+}
+
+/** Envelope de la respuesta del check-in. */
+export interface CheckInResponse {
+  data: CheckInResult;
+}
+
+/** Item de `GET /api/care-episodes/service-types`. */
+export interface ServiceType {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/**
+ * GET /api/care-episodes/service-types → catálogo activo filtrado por las
+ * especialidades del taller. Sin especialidades → catálogo completo +
+ * `onboardingRequired: true` (aviso de onboarding, no bloquea).
+ */
+export interface ServiceTypesResponse {
+  data: ServiceType[];
+  onboardingRequired: boolean;
 }
 
 /**
@@ -108,8 +209,11 @@ export interface CareEpisode {
  */
 export interface CareEpisodeVerificationItem {
   id: string;
+  /** Vehículo del episodio — deep-link al detalle (`/vehicles/:id/servicios/:id`). */
+  vehicleId: string;
   title: string;
-  serviceDate: string;
+  /** Plan 05 / F-TZ-11: `YYYY-MM-DD` (date-only) o `null` si no se declaró. */
+  serviceDate: string | null;
   mileageIn: number | null;
   notes: string | null;
   vehicle: {
@@ -123,6 +227,65 @@ export interface CareEpisodeVerificationItem {
     firstName: string;
     lastName: string;
   };
+}
+
+/**
+ * POST /api/care-episodes/:id/reject → 200 (contrato fijado del diseño
+ * aprobado de rechazo de verificación). Body `{ reason?: string }` (≤500,
+ * opcional). Errores: 403 (sin permiso / `source=workshop`), 404
+ * (ajeno/inexistente), 409 (ya `verified` u otro estado terminal).
+ */
+export interface RejectCareEpisodeResult {
+  id: string;
+  verification: "rejected";
+  rejectedByMemberId: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// B-3 — Cierre de atención (POST /api/care-episodes/:id/close)
+//
+// Contrato verificado en `api-follow-app/src/modules/care-episodes/dto/
+// close-care-episode.dto.ts` + `commands/close-care-episode/…handler.ts`:
+// - Odómetro de egreso XOR excepción "no legible" + motivo (3..200).
+// - `closeNotes` OBLIGATORIO (10..1000, D-207): diagnóstico / resumen.
+// - `serviceTypeIds` / `customServiceLabel` son ADITIVOS sobre los tipos del
+//   check-in (ADR-005). El MVP no los envía: el check-in ya carga ≥1.
+// - `mileageOut < mileageIn` → 400. `mileageOut < máximo histórico` → NO
+//   bloquea; la respuesta informa `mileageOutlier: true`.
+// ---------------------------------------------------------------------------
+
+/** POST /api/care-episodes/:id/close → body. */
+export interface CloseCareEpisodeInput {
+  /** Odómetro de egreso (entero ≥ 0). Mutuamente excluyente con la excepción. */
+  mileageOut?: number;
+  /** `true` → reemplaza a `mileageOut` y exige motivo + foto `after` vigente. */
+  mileageOutUnreadable?: boolean;
+  /** 3..200 caracteres; solo cuando `mileageOutUnreadable === true`. */
+  mileageOutUnreadableReason?: string;
+  /** Aditivo sobre los tipos ya cargados en el check-in (no se envía en el MVP). */
+  serviceTypeIds?: string[];
+  /** 3..120 caracteres; opción "Otro". */
+  customServiceLabel?: string;
+  /** Diagnóstico / resumen obligatorio (10..1000 caracteres, D-207). */
+  closeNotes: string;
+}
+
+/** Payload interno de la respuesta de cierre. */
+export interface CloseCareEpisodeResult {
+  id: string;
+  status: "delivered";
+  closedAt: string;
+  mileageOut: number | null;
+  mileageOutUnreadable: boolean;
+  /** Egreso menor al máximo histórico: no bloquea, se informa para la UI. */
+  mileageOutlier: boolean;
+}
+
+/** POST /api/care-episodes/:id/close → envelope `{ data }`. */
+export interface CloseCareEpisodeResponse {
+  data: CloseCareEpisodeResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -210,15 +373,47 @@ export interface CareEpisodeDetail {
     brand: string | null;
     model: string | null;
     manufactureYear: number | null;
+    /**
+     * D-TL-VC-9 regla 2 (copy §2.6): `true` si el vehículo ya tiene un
+     * `VehicleOwnership` primario activo (`endsAt: null`, `type <> 'co_owner'`).
+     * Sin PII del titular. Deploy viejo del backend puede omitirlo → usar
+     * `=== true`. El panel lo usa para no ofrecer "Generar link de reclamo"
+     * (el POST create responde 409 `active_owner`).
+     */
+    hasActiveOwner?: boolean;
   };
   status: "open" | "delivered" | "cancelled";
   source: CareEpisodeSource;
   verification: CareEpisodeVerification;
+  /** Contrato rechazo (aditivo): presente cuando `verification='rejected'`. */
+  rejectionReason?: string | null;
+  rejectedAt?: string | null;
+  rejectedByMemberId?: string | null;
   title: string | null;
   serviceDate: string | null;
   workshopId: string | null;
   workshopName: string | null;
   mileageIn: number | null;
+  /** Egreso registrado al cerrar (null si aún está abierto o no se pudo leer). */
+  mileageOut: number | null;
+  /** Excepción "odómetro no legible" usada en el cierre. */
+  mileageOutUnreadable: boolean;
+  /** Motivo de la excepción; presente cuando `mileageOutUnreadable === true`. */
+  mileageOutUnreadableReason: string | null;
+  /** Diagnóstico / resumen obligatorio del cierre (D-207). */
+  closeNotes: string | null;
+  /**
+   * Tipos de atención ya registrados en el check-in (ADR-005). Solo lectura en
+   * el cierre; el backend los resuelve con `code`/`name` del catálogo o
+   * `customLabel` para la opción "Otro". Opcional por tolerancia a deploys
+   * viejos del backend.
+   */
+  serviceTypes?: Array<{
+    serviceTypeId: string;
+    code: string | null;
+    name: string | null;
+    customLabel: string | null;
+  }>;
   /** Proyección: solo taller del episodio y dueño; puede venir OCULTO. */
   customerComplaint?: string | null;
   customerNotes: string | null;
@@ -263,6 +458,12 @@ export interface CareEpisodeListItem {
    * (serviceDate ?? checkedInAt ?? createdAt). Siempre ISO no-null.
    */
   canonicalDate: string;
+  /**
+   * Plan 05 / B-TZ-7 + F-TZ-11: fecha calendario (`YYYY-MM-DD`) derivada de
+   * `serviceDate`. `null`/ausente sii `serviceDate` es `null` (deploy viejo del
+   * backend → el front cae a `formatDate(canonicalDate)`).
+   */
+  canonicalDateOnly?: string | null;
   mileageIn: number | null;
   vehicle: {
     licensePlate: string;

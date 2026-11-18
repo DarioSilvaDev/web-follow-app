@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import {
   Card,
   CardContent,
@@ -54,6 +55,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TransferDialog } from "@/components/transfer/transfer-dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { vehicleApi } from "@/lib/api";
+import { invalidateVehicleViews, vehicleKeys } from "@/lib/query-keys";
 import {
   resolveTransferErrorMessage,
   type TransferAction,
@@ -244,12 +246,9 @@ function TransferItemCard({
         )}
 
         {errorMessage && (
-          <p
-            role="alert"
-            className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
+          <Callout variant="destructive" role="alert">
             {errorMessage}
-          </p>
+          </Callout>
         )}
 
         {(isPending || canCancel) && (onAccept || onReject || onCancel) && (
@@ -481,7 +480,7 @@ export default function TransferenciasPage() {
 
   // Vehículos propios para el CTA "Transferir vehículo" (selector D-084).
   const ownedQuery = useQuery({
-    queryKey: ["vehicles", "transfers", "owned"],
+    queryKey: vehicleKeys.transfersOwned(),
     queryFn: () => vehicleApi.listVehicles({ page: 1, limit: 100 }),
     retry: false,
     staleTime: 60_000,
@@ -499,11 +498,11 @@ export default function TransferenciasPage() {
     },
     onSuccess: (_data, variables) => {
       // Ajuste 6 UX (§6.2): invalidar AMBAS listas (incoming y outgoing — la
-      // contraparte ve el cambio) y ["vehicles"] (post-aceptación el vehículo
-      // aparece en "Mis vehículos" de inmediato). El prefijo ["vehicles"]
-      // cubre también la query de candidatos ["vehicles","transfers","owned"].
+      // contraparte ve el cambio) y todas las vistas del conjunto de vehículos
+      // (post-aceptación el vehículo aparece en "Mis vehículos" de inmediato;
+      // el prefijo `["vehicles"]` cubre también la query de candidatos).
       queryClient.invalidateQueries({ queryKey: ["transfers"] });
-      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+      invalidateVehicleViews(queryClient);
       setSuccessBanner(ACTION_SUCCESS_MESSAGE[variables.action]);
       setConfirming(null);
     },
@@ -527,7 +526,7 @@ export default function TransferenciasPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Transferencias
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -550,12 +549,7 @@ export default function TransferenciasPage() {
       </div>
 
       {successBanner && (
-        <div
-          role="status"
-          className="rounded-lg border border-success bg-success/10 px-3 py-2 text-sm text-success-foreground"
-        >
-          {successBanner}
-        </div>
+        <Callout variant="success">{successBanner}</Callout>
       )}
 
       <Tabs

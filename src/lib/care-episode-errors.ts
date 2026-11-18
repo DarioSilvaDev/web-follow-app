@@ -79,7 +79,7 @@ function resolveGenericCareEpisodeError(error: unknown): string {
 /**
  * Mensaje de UI para la carga del detalle (GET /care-episodes/:id).
  * - 404 → "Servicio no encontrado" (el backend NO revela existencia en
- *   PERSONAL; el copy acompaña la pantalla terminal con Volver al vehículo).
+ *   PERSONAL; el copy acompaña la pantalla terminal con un back-link contextual).
  * - 403 → solo se alcanza en contextos sin acceso de lectura (WORKSHOP ajeno
  *   / falta de membresía); el backend traduce el resto a 404.
  * - resto → fallback que distingue 5xx (server) de fallo de red (sin status).

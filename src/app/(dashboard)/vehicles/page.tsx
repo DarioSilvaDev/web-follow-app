@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Car, Loader2, RotateCw, Search, X } from "lucide-react";
+import { Car, Plus, RotateCw, Search, X } from "lucide-react";
 import { vehicleApi } from "@/lib/api";
+import { vehicleKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { typeScale } from "@/components/ui/type-scale";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/empty-state";
 import { VehicleCard } from "@/components/vehicle/vehicle-card";
@@ -44,10 +46,10 @@ export default function VehiclesPage() {
       ? debouncedInput.trim()
       : "";
 
-  // F-012 / RF-4: dynamic 4-element key (stable base for F-011 invalidation)
+  // F-012 / RF-4: clave estable y jerárquica (`vehicleKeys.all` la cubre)
   // + placeholderData keeps the previous list while q changes (no flash).
   const query = useQuery({
-    queryKey: ["vehicles", PAGE, LIMIT, effectiveQ],
+    queryKey: vehicleKeys.list({ page: PAGE, limit: LIMIT, q: effectiveQ }),
     queryFn: () =>
       effectiveQ
         ? vehicleApi.listVehicles({ page: PAGE, limit: LIMIT, q: effectiveQ })
@@ -56,57 +58,115 @@ export default function VehiclesPage() {
   });
 
   const isEmpty = !query.data || query.data.data.length === 0;
+  // Contador de la cabecera: `meta.total` (backend) y no `data.length`
+  // (que queda en 20 por la página); con búsqueda activa refleja el total
+  // filtrado, consistente con lo que se ve. Fallback defensivo a data.length.
+  const qty = query.data?.meta?.total ?? query.data?.data?.length ?? 0;
   const showSearchEmptyState = Boolean(effectiveQ && isEmpty);
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Mis vehículos</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Registra y consulta los vehículos de tu propiedad.
+      {/* Cabecera de pantalla: tarjeta clara (identidad Autentia, DS claro).
+          Inspirada en la referencia conceptual de "Mis vehículos" (título +
+          subtítulo + contador grande + acción primaria cuadrada), adaptada a
+          nuestra paleta light (`--card`, `--border`, `--primary`). El contador
+          en tabular-nums hace legible la cantidad de un vistazo; el botón es
+          icon-only con nombre accesible vía aria-label. */}
+      <header className="flex items-start justify-between gap-4 rounded-card border border-border bg-card p-5 shadow-card sm:p-6">
+        <div className="min-w-0">
+          <h1
+            className={`font-heading font-semibold tracking-tight text-foreground ${typeScale.display}`}
+          >
+            Mis vehículos
+          </h1>
+          <p className={`mt-1 text-muted-foreground ${typeScale.body}`}>
+            Gestioná tus vehículos y sus historiales.
+          </p>
+          <p className="mt-3 flex items-baseline gap-2 sm:mt-4">
+            <span className="font-heading text-4xl font-extrabold leading-none tracking-tight text-primary tabular-nums sm:text-5xl">
+              {String(qty)}
+            </span>
+            <span
+              className={`font-medium text-muted-foreground ${typeScale.body}`}
+            >
+              {qty === 1 ? "vehículo registrado" : "vehículos registrados"}
+            </span>
           </p>
         </div>
-        <Link href="/vehicles/new">
-          <Button>Registrar vehículo</Button>
+        <Link
+          href="/vehicles/new"
+          aria-label="Registrar vehículo"
+          className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 motion-reduce:transition-none"
+        >
+          <Plus className="h-6 w-6" aria-hidden="true" />
         </Link>
-      </div>
+      </header>
 
       {/* F-012 / RF-5: search bar — controlled input, accessible label, clear button. */}
-      <div className="flex flex-col gap-2 max-w-md">
+      <div className="flex w-full max-w-md flex-col gap-2">
         <Label htmlFor="vehicle-search" className="sr-only">
-          Buscar por placa
+          Buscar por patente
         </Label>
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Search
+            className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
           <Input
             id="vehicle-search"
             type="search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Buscar por placa…"
+            placeholder="Buscar por patente (ej. AAA111 o AA111AA)"
             maxLength={20}
-            className="pl-8 pr-8"
+            className="h-11 rounded-xl border-input bg-card pl-11 pr-12 text-base focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-12"
           />
           {searchInput && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2"
+              // 36px visibles + área clickeable expandida a ~44px (WCAG 2.5.5).
+              className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 after:absolute after:-inset-1 after:content-['']"
               aria-label="Limpiar búsqueda"
               onClick={() => setSearchInput("")}
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </Button>
           )}
         </div>
+        <p className="text-xs text-muted-foreground">
+          Patente vieja AAA111 · patente nueva AA111AA
+        </p>
       </div>
 
       {query.isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
+        // Skeleton con la forma de cada VehicleCard (no un spinner suelto).
+        <ul
+          className="flex flex-col gap-4"
+          role="status"
+          aria-label="Cargando vehículos"
+        >
+          {[0, 1, 2].map((row) => (
+            <li
+              key={row}
+              aria-hidden="true"
+              className="rounded-card border bg-card p-6 shadow-card"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 animate-pulse rounded-lg bg-muted" />
+                  <div className="space-y-2">
+                    <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+                    <div className="h-3 w-32 animate-pulse rounded bg-muted" />
+                  </div>
+                </div>
+                <div className="h-6 w-20 animate-pulse rounded-full bg-muted" />
+              </div>
+              <div className="mt-4 h-3 w-40 animate-pulse rounded bg-muted" />
+            </li>
+          ))}
+        </ul>
       ) : query.isError ? (
         <EmptyState
           icon={RotateCw}
@@ -123,8 +183,8 @@ export default function VehiclesPage() {
         showSearchEmptyState ? (
           <EmptyState
             icon={Search}
-            title="No se encontraron vehículos con esa placa"
-            description={`No hay vehículos que coincidan con «${effectiveQ}». Probá con otra placa o limpiá la búsqueda.`}
+            title="No se encontraron vehículos con esa patente"
+            description={`No hay vehículos que coincidan con «${effectiveQ}». Probá con otra patente o limpiá la búsqueda.`}
             action={
               <Button variant="outline" onClick={() => setSearchInput("")}>
                 <X className="mr-1.5 h-3.5 w-3.5" />

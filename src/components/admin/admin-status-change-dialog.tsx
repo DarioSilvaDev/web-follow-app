@@ -14,6 +14,7 @@
  */
 import { Dialog, DialogClose, DialogDescription, DialogPopup, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { Loader2 } from "lucide-react";
 
 export interface AdminStatusChangeDialogProps {
@@ -52,12 +53,9 @@ export function AdminStatusChangeDialog({
         <DialogDescription>{description}</DialogDescription>
 
         {dialogError && (
-          <p
-            role="alert"
-            className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
+          <Callout variant="destructive" role="alert">
             {dialogError}
-          </p>
+          </Callout>
         )}
 
         <div className="mt-4 flex justify-end gap-2">

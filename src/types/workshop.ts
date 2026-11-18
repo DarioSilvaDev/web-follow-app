@@ -23,6 +23,22 @@ export interface WorkshopBranch {
   isActive: boolean;
 }
 
+/**
+ * Especialidad del taller.
+ *
+ * Shape compartido por los endpoints existentes de especialidades
+ * (`workshops.controller.ts` / `public.controller.ts`):
+ * - `GET /workshops/:id/specialties` → especialidades cargadas (WorkshopGuard).
+ * - `GET /specialties` → catálogo público (SpecialtyResponseDto).
+ * - `POST /workshops/:id/specialties` → la asociación creada.
+ */
+export interface WorkshopSpecialty {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+}
+
 /** GET /api/workshops/:id → WorkshopResponseDto (branches activas, sede primero). */
 export interface WorkshopDetail {
   id: string;
@@ -43,6 +59,38 @@ export interface WorkshopDetail {
 }
 
 /**
+ * `GET /workshops` (listado propio, espejo de `GET /dealerships/mine`) →
+ * envelope `{ data, meta }`. El handler devuelve la entidad Prisma con
+ * `_count` (members/branches) y `branches` acotado a la sede (headquarters).
+ * Tipo acotado a lo que lee el listado (`/workshops`); no reutiliza
+ * `WorkshopDetail` para no exponer campos que este consumo no necesita.
+ */
+export interface WorkshopSummary {
+  id: string;
+  name: string;
+  legalName: string | null;
+  taxId: string | null;
+  logoUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { members: number; branches: number };
+  branches?: WorkshopBranch[];
+}
+
+export interface WorkshopListMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface WorkshopListResponse {
+  data: WorkshopSummary[];
+  meta: WorkshopListMeta;
+}
+
+/**
  * Iteración 2-2 (RF-3): `GET /api/workshops/search?q=` → resultado de la
  * búsqueda pública acotada de talleres (autenticado, SIN membresía).
  * Devuelve SOLO `id`/`name`/`logoUrl?`/`city` — sin taxId/email/branches
@@ -53,6 +101,19 @@ export interface WorkshopSearchResult {
   name: string;
   logoUrl?: string | null;
   city: string | null;
+}
+
+/**
+ * Iteración "Taller responsable" 3 (RF-8, D-066): `GET /api/workshops/catalog`
+ * → envelope paginado `{ data, meta }` del catálogo PÚBLICO acotado de
+ * talleres activos (espejo de `/workshops/search`, pero page-based para
+ * "cargar más" incremental en el bottom sheet). Sin `q` devuelve el catálogo
+ * completo (orden alfabético); con `q` (≥ 2 chars) filtra por nombre.
+ * PII mínima `{id, name, logoUrl?, city}`; sin match → `data: []`.
+ */
+export interface WorkshopCatalogResponse {
+  data: WorkshopSearchResult[];
+  meta: WorkshopListMeta;
 }
 
 /**

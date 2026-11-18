@@ -5,9 +5,9 @@
  *
  * 1 pantalla: datos del negocio + "yo soy el dueño". CUIT opcional y
  * editable después (resolución PM §3.8 — sin fricción para concesionarias
- * chicas). Tras crear, se refresca la sesión (/auth/me) para que el
- * selector de contexto DEALERSHIP aparezca de inmediato y se navega al
- * panel de la concesionaria.
+ * chicas). Tras crear, se refresca la sesión (/auth/me) para que la
+ * membresía (y por ende el chip de contexto) esté disponible de inmediato
+ * y se navega al panel de la concesionaria.
  */
 
 import { useState } from "react";
@@ -19,6 +19,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
@@ -97,9 +98,14 @@ export function CreateDealershipForm() {
         phone: values.phone?.trim() || undefined,
       });
       // La membresía del dueño aparece en /auth/me → refrescar la sesión
-      // para que el selector de contexto DEALERSHIP se muestre.
+      // para que el contexto de la concesionaria (chip del header) pueda
+      // resolverla al navegar al detalle.
       await refreshSession().catch(() => undefined);
-      queryClient.invalidateQueries({ queryKey: ["dealerships"] });
+      // El listado `/dealerships` lee `["dealerships-mine"]`
+      // (`dealerships/page.tsx:33`): `["dealerships"]` NO matchea por prefijo
+      // (`dealerships-mine` ≠ `dealerships`) y la invalidación quedaba muerta
+      // ⇒ "Volver a concesionarias" podía no mostrar la recién creada.
+      queryClient.invalidateQueries({ queryKey: ["dealerships-mine"] });
       router.push(`/dealerships/${dealership.id}`);
     } catch (error) {
       const status = (error as { status?: number }).status;
@@ -224,12 +230,9 @@ export function CreateDealershipForm() {
       )}
 
       {submitError && (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
+        <Callout variant="destructive" role="alert">
           {submitError}
-        </p>
+        </Callout>
       )}
 
       <div className="flex justify-end gap-2 pt-2">

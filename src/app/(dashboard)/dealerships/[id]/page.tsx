@@ -8,7 +8,10 @@
  *
  * Estructura:
  * - Cabecera de perfil: nombre, razón social / CUIT, estado (Activa/Inactiva
- *   por `isActive`, D-106) y acciones "Exhibición" · "Miembros".
+ *   por `isActive`, D-106), CTA "Registrar vehículo" (→ /vehicles/new; el
+ *   contexto DEALERSHIP lo garantiza el hook de ruta) y acciones "Exhibición"
+ *   · "Miembros". La tab inicial acepta `?tab=members` (deep-link desde el
+ *   dashboard en contexto DEALERSHIP).
  * - `DealershipExhibitionSection` (D-107, spec §8): vehículos consignados en
  *   exhibición — Vender (QR sale, RB-D) / Devolver (QR return) vía
  *   QrTransferPanel (ÚNICA frontera QR, AGENTS.md §22 / frontend §14).
@@ -18,12 +21,15 @@
  * La UI solo oculta visibilidad; nunca es security boundary (AGENTS.md §20/§22).
  */
 
+import { Suspense } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Store } from "lucide-react";
+import { ArrowLeft, Plus, Store } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DealershipExhibitionSection } from "@/components/dealership/dealership-exhibition-section";
 import { DealershipMembersSection } from "@/components/dealership/dealership-members-section";
@@ -67,38 +73,31 @@ export default function DealershipDetailPage() {
       )}
 
       {isNotFound && (
-        <Card>
-          <CardContent className="flex flex-col items-start gap-3 py-10">
-            <Store className="h-6 w-6 text-muted-foreground" />
-            <div>
-              <p className="font-medium">Concesionaria no encontrada</p>
-              <p className="text-sm text-muted-foreground">
-                No existe o no tenés acceso a esta concesionaria.
-              </p>
-            </div>
+        <EmptyState
+          icon={Store}
+          title="Concesionaria no encontrada"
+          description="No existe o no tenés acceso a esta concesionaria."
+          action={
             <Link
               href="/dealerships"
               className={buttonVariants({ size: "sm", variant: "outline" })}
             >
               Ver mis concesionarias
             </Link>
-          </CardContent>
-        </Card>
+          }
+        />
       )}
 
       {!isNotFound && dealershipQuery.isError && (
-        <Card>
-          <CardContent className="flex flex-col items-start gap-3 py-10">
-            <p className="font-medium text-destructive">
-              No se pudo cargar la concesionaria
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {dealershipError instanceof Error
-                ? dealershipError.message
-                : "Ocurrió un error inesperado. Intentá nuevamente."}
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Store}
+          title="No se pudo cargar la concesionaria"
+          description={
+            dealershipError instanceof Error
+              ? dealershipError.message
+              : "Ocurrió un error inesperado. Intentá nuevamente."
+          }
+        />
       )}
 
       {dealership && (
@@ -122,36 +121,63 @@ export default function DealershipDetailPage() {
                         "Sin razón social / CUIT cargados"}
                     </div>
                     <div className="flex items-center gap-2 pt-1 text-xs">
-                      <span
-                        className={
-                          dealership.isActive
-                            ? "rounded-full bg-emerald-500/15 px-2 py-0.5 font-medium text-emerald-600"
-                            : "rounded-full bg-muted px-2 py-0.5 font-medium text-muted-foreground"
-                        }
+                      <Badge
+                        variant={dealership.isActive ? "success" : "secondary"}
                       >
                         {dealership.isActive ? "Activa" : "Inactiva"}
-                      </span>
+                      </Badge>
                     </div>
                   </div>
                 </div>
+                {/* Alta de vehículo a nombre de la concesionaria: el contexto
+                    DEALERSHIP lo garantiza useRouteDerivedContext al estar en
+                    /dealerships/[id] (el form exige kilometraje inicial, D-07). */}
+                <Link
+                  href="/vehicles/new"
+                  className={buttonVariants({ size: "sm", className: "gap-1.5" })}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Registrar vehículo
+                </Link>
               </div>
             </CardHeader>
           </Card>
 
-          <Tabs defaultValue="exhibition">
-            <TabsList>
-              <TabsTrigger value="exhibition">Exhibición</TabsTrigger>
-              <TabsTrigger value="members">Miembros</TabsTrigger>
-            </TabsList>
-            <TabsContent value="exhibition" className="pt-3">
-              <DealershipExhibitionSection dealershipId={dealershipId} />
-            </TabsContent>
-            <TabsContent value="members" className="pt-3">
-              <DealershipMembersSection dealershipId={dealershipId} />
-            </TabsContent>
-          </Tabs>
+          <Suspense fallback={null}>
+            <DealershipDetailTabs dealershipId={dealershipId} />
+          </Suspense>
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Tabs Exhibición / Miembros. Separa el componente para leer `?tab=`
+ * con `useSearchParams` dentro de un Suspense boundary (patrón del repo —
+ * ver (auth)/login). `?tab=members` → tab Miembros (deep-link del
+ * dashboard); cualquier otro valor defaultea a Exhibición.
+ */
+function DealershipDetailTabs({ dealershipId }: { dealershipId: string }) {
+  const searchParams = useSearchParams();
+  const initialTab =
+    searchParams.get("tab") === "members" ? "members" : "exhibition";
+
+  return (
+    <Tabs defaultValue={initialTab}>
+      <TabsList>
+        <TabsTrigger value="exhibition">Exhibición</TabsTrigger>
+        <TabsTrigger value="members">Miembros</TabsTrigger>
+      </TabsList>
+      <TabsContent value="exhibition" className="pt-3">
+        <DealershipExhibitionSection
+          dealershipId={dealershipId}
+          registerHref="/vehicles/new"
+        />
+      </TabsContent>
+      <TabsContent value="members" className="pt-3">
+        <DealershipMembersSection dealershipId={dealershipId} />
+      </TabsContent>
+    </Tabs>
   );
 }

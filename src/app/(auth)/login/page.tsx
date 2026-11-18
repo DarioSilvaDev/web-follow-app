@@ -53,14 +53,26 @@ function LoginFormInner() {
   const onSubmit = async (data: LoginForm) => {
     setServerError(null);
     try {
-      // POST /auth/login — backend sets HttpOnly cookies, returns { user }
+      // // POST /auth/login — backend sets HttpOnly cookies, returns { user }
+      // await authApi.login(data.email, data.password);
+
+      // // Cookies are now set by the backend. Reload session from /auth/me.
+      // await refreshSession();
+
+      // // Redirect: respect the allowlisted ?next= deep link, default to /dashboard.
+      // router.push(resolveSafeNext(rawNext));
       await authApi.login(data.email, data.password);
 
-      // Cookies are now set by the backend. Reload session from /auth/me.
-      await refreshSession();
+      const sessionUser = await refreshSession();
 
-      // Redirect: respect the allowlisted ?next= deep link, default to /dashboard.
-      router.push(resolveSafeNext(rawNext));
+      if (!sessionUser) {
+        setServerError(
+          "El login fue aceptado, pero no se pudo recuperar la sesión. Revisá la autenticación y las cookies.",
+        );
+        return;
+      }
+
+      router.replace(resolveSafeNext(rawNext));
     } catch (err: unknown) {
       const error = err as { status?: number; message?: string; code?: string };
       if (error.status === 401) {

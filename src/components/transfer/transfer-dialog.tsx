@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { Car, Loader2, Mail, QrCode, Send, Store } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import {
   Dialog,
   DialogDescription,
@@ -21,6 +22,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { vehicleApi } from "@/lib/api";
+import { invalidateVehicleViews } from "@/lib/query-keys";
 import {
   createTransferErrorMessage,
   pendingTransferMessage,
@@ -94,7 +96,7 @@ export type TransferFormValues = z.infer<typeof transferFormSchema>;
 interface TransferDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Modo detalle: vehículo fijo (solo id + placa). */
+  /** Modo detalle: vehículo fijo (solo id + patente). */
   vehicle?: { id: string; licensePlate: string } | null;
   /** Modo panel: vehículos de propiedad del usuario (selector). */
   vehicles?: Vehicle[];
@@ -337,7 +339,7 @@ function TransferDialogForm({
       // la lista de vehículos propios se resincronicen.
       if (transferErrorStatus(error) === 403) {
         queryClient.invalidateQueries({ queryKey: ["vehicle"] });
-        queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+        invalidateVehicleViews(queryClient);
       }
     }
   });
@@ -355,7 +357,7 @@ function TransferDialogForm({
           vehicle={qrVehicle}
           onMutationEnd={() => {
             queryClient.invalidateQueries({ queryKey: ["vehicle"] });
-            queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+            invalidateVehicleViews(queryClient);
             onSuccess?.();
           }}
         />
@@ -369,7 +371,7 @@ function TransferDialogForm({
             purpose="take"
             onMutationEnd={() => {
               queryClient.invalidateQueries({ queryKey: ["vehicle"] });
-              queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+              invalidateVehicleViews(queryClient);
               onSuccess?.();
             }}
           />
@@ -424,10 +426,7 @@ function TransferDialogForm({
           </div>
 
           {pendingMessage ? (
-            <div
-              role="alert"
-              className="rounded-lg border border-warning bg-warning/10 px-3 py-2 text-sm text-warning-foreground"
-            >
+            <Callout variant="warning" role="alert">
               <p>{pendingMessage}</p>
               {/* Ajuste 3b UX (§5.3/RF-4): CTA "Ver solicitud" → panel Enviadas. */}
               <Link
@@ -436,14 +435,11 @@ function TransferDialogForm({
               >
                 Ver solicitud
               </Link>
-            </div>
+            </Callout>
           ) : errorMessage ? (
-            <p
-              role="alert"
-              className="rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            >
+            <Callout variant="destructive" role="alert">
               {errorMessage}
-            </p>
+            </Callout>
           ) : null}
 
           <div className="flex justify-end gap-2 pt-2">

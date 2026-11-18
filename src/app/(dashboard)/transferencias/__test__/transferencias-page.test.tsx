@@ -169,7 +169,7 @@ describe("Transferencias panel page (Fase 1 / D-078)", () => {
     expect(screen.getByRole("tab", { name: "Recibidas" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Enviadas" })).toBeInTheDocument();
 
-    // Item: placa → link al detalle del vehículo.
+    // Item: patente → link al detalle del vehículo.
     const plate = await screen.findByText("ABC123");
     expect(plate.closest("a")).toHaveAttribute("href", "/vehicles/v1");
 
