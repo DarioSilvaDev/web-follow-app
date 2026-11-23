@@ -85,7 +85,8 @@ export function ClaimStepPlate({
               placeholder="Ej. AB123CD"
               autoComplete="off"
               inputMode="text"
-              maxLength={10}
+              sanitize="plate"
+              maxLength={7}
               aria-invalid={errors.licensePlate ? true : undefined}
               disabled={loading}
               {...register("licensePlate")}
