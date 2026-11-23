@@ -41,7 +41,8 @@ function makeCareEpisode(
     serviceDate: "2026-06-18T00:00:00.000Z",
     status: "delivered",
     source: "workshop",
-    verification: "verified",
+    // D-209: episodios de taller llevan `verification: null`.
+    verification: null,
     mileageIn: 42380,
     mileageOut: null,
     customerNotes: null,
@@ -73,7 +74,7 @@ describe("VehicleTimelineCard", () => {
     vi.clearAllMocks();
   });
 
-  it("renderiza los últimos registros con registrante, km y verificación", () => {
+  it("renderiza los últimos registros con registrante y km (taller: SIN badge de verificación, D-209)", () => {
     render(
       <VehicleTimelineCard
         vehicleId="v1"
@@ -93,7 +94,9 @@ describe("VehicleTimelineCard", () => {
     expect(item).toHaveTextContent("Mantenimiento preventivo");
     expect(item).toHaveTextContent("Registrado por Taller Norte");
     expect(item).toHaveTextContent("42.380 km");
-    expect(item).toHaveTextContent("Verificado");
+    // D-209/D-071: la verificación no aplica a episodios de taller.
+    expect(item).not.toHaveTextContent("Pendiente de verificación");
+    expect(item).not.toHaveTextContent("Verificado");
 
     // Deep-link al detalle de la atención
     const detalle = within(item).getByRole("link", { name: /Ver detalle/ });
@@ -176,6 +179,56 @@ describe("VehicleTimelineCard", () => {
     expect(screen.queryByText(/Verificado por/)).not.toBeInTheDocument();
     // El registrante sigue siendo el propietario (el rechazo no cambia el actor).
     expect(screen.getByText("Registrado por el propietario")).toBeInTheDocument();
+  });
+
+  it("episodio de taller delivered → SIN badge 'Pendiente de verificación' (D-209)", () => {
+    render(
+      <VehicleTimelineCard
+        vehicleId="v1"
+        historyStatus="success"
+        history={historyWithCare([
+          makeCareEpisode({
+            id: "c6",
+            status: "delivered",
+            source: "workshop",
+            verification: null,
+          }),
+        ])}
+        onRetry={onRetry}
+      />,
+    );
+
+    expect(
+      screen.queryByText("Pendiente de verificación"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Verificado")).not.toBeInTheDocument();
+    expect(screen.getByText("Registrado por Taller Norte")).toBeInTheDocument();
+  });
+
+  it("owner verificado → 'Verificado por {taller}' como registrante, sin badge 'Pendiente de verificación'", () => {
+    render(
+      <VehicleTimelineCard
+        vehicleId="v1"
+        historyStatus="success"
+        history={historyWithCare([
+          makeCareEpisode({
+            id: "c7",
+            source: "owner",
+            verification: "verified",
+            workshop: { id: "w1", name: "Taller El Rayo" },
+            workshopName: "Taller El Rayo",
+          }),
+        ])}
+        onRetry={onRetry}
+      />,
+    );
+
+    expect(
+      screen.getByText("Verificado por Taller El Rayo"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Pendiente de verificación"),
+    ).not.toBeInTheDocument();
   });
 
   it("historial vacío → estado vacío accionable con CTA", () => {

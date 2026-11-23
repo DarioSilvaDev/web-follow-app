@@ -110,28 +110,32 @@ function careActor(entry: TimelineEntry, care: VehicleCareEpisode): string {
   return entry.actor ?? "";
 }
 
+/**
+ * Consistent con `mergeHistory` (`entry.badge`): el badge de verificación
+ * SOLO aplica a episodios `source === "owner"` (D-209/D-071). Para episodios
+ * de taller — o `verification === null` — "la verificación no aplica" y NO se
+ * renderiza nada.
+ * - `unverified` → "Pendiente de verificación" (warning atenuado).
+ * - `rejected`   → "Rechazado por {taller}" (destructive).
+ * - `verified`   → SIN badge: "Verificado por {taller}" es el `actor` del
+ *   episodio owner verificado (D-071, TL §3.3), nunca una pill duplicada.
+ */
 export function VerificationBadge({ care }: { care: VehicleCareEpisode }) {
+  if (care.source !== "owner" || care.verification == null) return null;
   const workshopName = care.workshopName ?? care.workshop?.name;
-  const label =
-    care.verification === "verified"
-      ? "Verificado"
-      : care.verification === "rejected"
-        ? workshopName
+  if (care.verification === "verified") return null;
+  if (care.verification === "rejected") {
+    return (
+      <Badge variant="destructive" className="text-xs">
+        {workshopName
           ? `Rechazado por ${workshopName}`
-          : "Rechazado por el taller responsable"
-        : "Pendiente de verificación";
+          : "Rechazado por el taller responsable"}
+      </Badge>
+    );
+  }
   return (
-    <Badge
-      variant={
-        care.verification === "verified"
-          ? "success"
-          : care.verification === "rejected"
-            ? "destructive"
-            : "warning"
-      }
-      className="text-xs"
-    >
-      {label}
+    <Badge variant="warning" className="text-xs">
+      Pendiente de verificación
     </Badge>
   );
 }
@@ -192,6 +196,8 @@ function HistoryEntry({
                 {care.mileageIn.toLocaleString("es-AR")} km
               </span>
             )}
+            {/* Badge source-aware (gate idéntico a `entry.badge` de
+                mergeHistory): workshop / verification null → no renderiza. */}
             {care && <VerificationBadge care={care} />}
             {isCare && entry.careId && (
               <Link

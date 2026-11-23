@@ -216,7 +216,8 @@ const careWorkshop = {
   serviceDate: "2026-09-05T00:00:00.000Z",
   status: "cancelled",
   source: "workshop",
-  verification: "verified",
+  // D-209: episodios de taller llevan `verification: null`.
+  verification: null,
   mileageIn: null,
   customerNotes: "Presupuesto no aprobado",
   checkedInAt: null,
@@ -236,7 +237,7 @@ const careSnapshotWins = {
   serviceDate: "2026-09-01T00:00:00.000Z",
   status: "delivered",
   source: "workshop",
-  verification: "verified",
+  verification: null,
   mileageIn: null,
   customerNotes: null,
   checkedInAt: null,
@@ -378,6 +379,24 @@ describe("Vehicle detail — Historial section (F-014)", () => {
       screen.getByText("Pendiente de verificación"),
     ).toBeInTheDocument();
     expect(screen.getByText("Aceite 5W30")).toBeInTheDocument();
+  });
+
+  it("episodio de taller delivered → SIN badge 'Pendiente de verificación' (D-209)", async () => {
+    mockGetVehicleHistory.mockResolvedValue({
+      transfers: [],
+      mileages: [],
+      ownerships: [],
+      careEpisodes: [{ ...careWorkshop, status: "delivered" }],
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("Atención de taller")).toBeInTheDocument();
+    expect(screen.getByText("Registrado por Libertad")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Pendiente de verificación"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Verificado/)).not.toBeInTheDocument();
   });
 
   it("owner verificado → actor 'Verificado por {taller}' sin badge (D-071)", async () => {

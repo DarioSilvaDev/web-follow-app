@@ -301,6 +301,8 @@ describe("mergeHistory — care episodes (iteración 2-3)", () => {
           makeCareEpisode({
             title: null,
             source: "workshop",
+            // D-209: episodios de taller llevan `verification: null`.
+            verification: null,
             workshop: { id: "w1", name: "Lubricentro Central" },
           }),
         ],
@@ -331,12 +333,45 @@ describe("mergeHistory — care episodes (iteración 2-3)", () => {
             title: "Reparación de frenos",
             status: "cancelled",
             source: "workshop",
+            verification: null,
           }),
         ],
       }),
     );
 
     expect(entries[0].title).toBe("Reparación de frenos (cancelada)");
+  });
+
+  it("workshop con status delivered y verification null → sin badge 'Pendiente de verificación' (D-209)", () => {
+    const entries = mergeHistory(
+      makeHistory({
+        careEpisodes: [
+          makeCareEpisode({
+            title: "Cambio de aceite",
+            status: "delivered",
+            source: "workshop",
+            verification: null,
+            workshop: { id: "w1", name: "Lubricentro Central" },
+          }),
+        ],
+      }),
+    );
+
+    expect(entries[0].badge).toBeUndefined();
+    expect(entries[0].actor).toBe("Taller Lubricentro Central");
+  });
+
+  it("owner con verification null (fuera de contrato) → sin badge (defensivo, D-209)", () => {
+    const entries = mergeHistory(
+      makeHistory({
+        careEpisodes: [
+          makeCareEpisode({ source: "owner", verification: null }),
+        ],
+      }),
+    );
+
+    expect(entries[0].badge).toBeUndefined();
+    expect(entries[0].actor).toBe("Registrado por el propietario");
   });
 
   it("date = D-070: serviceDate gana; si no checkedInAt; si no createdAt", () => {
@@ -552,12 +587,13 @@ describe("mergeHistory — careId para deep-link (iteración 2-4)", () => {
     expect(JSON.stringify(entries)).not.toContain('"careId"');
   });
 
-  it("careId viaja con el episodio aunque el badge/título cambien (workshop verificado)", () => {
+  it("careId viaja con el episodio aunque el badge/título cambien (taller, verification null)", () => {
     const entries = mergeHistory(
       makeHistory({
         careEpisodes: [
           makeCareEpisode({
-            verification: "verified",
+            source: "workshop",
+            verification: null,
             workshop: { id: "w1", name: "Taller Integral" },
           }),
         ],
@@ -697,6 +733,7 @@ describe("latestEpisodeMileage (PM E � fallback de la ficha)", () => {
       makeCareEpisode({
         id: "a",
         source: "workshop",
+        verification: null,
         workshopName: "Lo de Ceci",
         workshop: { id: "w1", name: "Nombre Viejo" },
       }),

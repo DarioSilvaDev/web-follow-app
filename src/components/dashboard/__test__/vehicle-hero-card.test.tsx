@@ -99,7 +99,8 @@ function makeCareEpisode(
     serviceDate: "2026-06-18T00:00:00.000Z",
     status: "delivered",
     source: "workshop",
-    verification: "verified",
+    // D-209: episodios de taller llevan `verification: null`.
+    verification: null,
     mileageIn: 42000,
     mileageOut: null,
     customerNotes: null,
@@ -474,7 +475,7 @@ describe("VehicleHeroCard", () => {
     rerender(
       <VehicleHeroCard
         vehicle={makeVehicle()}
-        careEpisodes={[makeCareEpisode({ verification: "unverified" })]}
+        careEpisodes={[makeCareEpisode({ source: "owner", verification: "unverified" })]}
       />,
     );
     expect(screen.getByText("Requiere verificación")).toBeInTheDocument();
@@ -530,7 +531,7 @@ describe("deriveHistoryStatus", () => {
   it("algún episodio sin verificar → Requiere verificación", () => {
     const episodes = [
       makeCareEpisode(),
-      makeCareEpisode({ id: "c2", verification: "unverified" }),
+      makeCareEpisode({ id: "c2", source: "owner", verification: "unverified" }),
     ];
     expect(deriveHistoryStatus(episodes)).toMatchObject({
       label: "Requiere verificación",
@@ -548,8 +549,8 @@ describe("deriveHistoryStatus", () => {
   it("alguno rechazado (sin pendientes) → 'Verificación rechazada', nunca 'Requiere verificación'", () => {
     expect(
       deriveHistoryStatus([
-        makeCareEpisode({ verification: "rejected" }),
-        makeCareEpisode({ id: "c2", verification: "verified" }),
+        makeCareEpisode({ source: "owner", verification: "rejected" }),
+        makeCareEpisode({ id: "c2", source: "owner", verification: "verified" }),
       ]),
     ).toMatchObject({
       label: "Verificación rechazada",
@@ -557,15 +558,15 @@ describe("deriveHistoryStatus", () => {
     });
     // Un rechazo NO cuenta como pendiente de verificación.
     expect(
-      deriveHistoryStatus([makeCareEpisode({ verification: "rejected" })])?.label,
+      deriveHistoryStatus([makeCareEpisode({ source: "owner", verification: "rejected" })])?.label,
     ).toBe("Verificación rechazada");
   });
 
   it("rechazado + sin verificar → gana el pendiente ('Requiere verificación')", () => {
     expect(
       deriveHistoryStatus([
-        makeCareEpisode({ verification: "rejected" }),
-        makeCareEpisode({ id: "c2", verification: "unverified" }),
+        makeCareEpisode({ source: "owner", verification: "rejected" }),
+        makeCareEpisode({ id: "c2", source: "owner", verification: "unverified" }),
       ]),
     ).toMatchObject({ label: "Requiere verificación" });
   });

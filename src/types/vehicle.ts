@@ -345,10 +345,11 @@ export interface VehicleCareEpisode {
   /** D-063: fijo e inmutable en la creación. */
   source: "owner" | "workshop";
   /**
-   * D-064: solo talleres verifican. `rejected` = rechazo de verificación
-   * (diseño aprobado) — union compartido `CareEpisodeVerification`.
+   * D-064 + D-209/D-071: solo los episodios del propietario se verifican.
+   * `null` = "verificación no aplica" (episodios `source='workshop'`);
+   * `source='owner'` conserva `unverified | verified | rejected`.
    */
-  verification: CareEpisodeVerification;
+  verification: CareEpisodeVerification | null;
   mileageIn: number | null;
   /** Km al cerrar (salida) — solo lectura aditiva del historial (D-070). */
   mileageOut: number | null;

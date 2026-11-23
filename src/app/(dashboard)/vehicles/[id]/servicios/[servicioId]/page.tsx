@@ -328,11 +328,15 @@ export default function CareEpisodeDetailPage() {
   const reasonRequired = removalReasonRequired(permissionCtx);
 
   // ── Zona de subida S4 (espejo de assertWritableState del handler) ──
+  // Espejo de `assertWritableState` del handler (attach-care-episode-
+  // attachments): episodios owner no admiten adjuntos; bloquea
+  // delivered/cancelled/verificado. D-209: en episodios de taller
+  // `verification` es `null` → no debe bloquearse por la verificación.
   const canUpload =
     detail.source === "workshop" &&
     activeWorkshopId === detail.workshopId &&
     detail.status === "open" &&
-    detail.verification === "unverified";
+    detail.verification !== "verified";
 
   const vehicleName = [detail.vehicle.brand, detail.vehicle.model]
     .filter(Boolean)

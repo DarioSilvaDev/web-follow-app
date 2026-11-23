@@ -73,10 +73,13 @@ export function deriveHistoryStatus(
   if (careEpisodes.length === 0) {
     return { label: "Sin historial", variant: "outline", icon: FileText };
   }
-  // Defensivo: cualquier valor desconocido sigue contando como pendiente
-  // (misma garantía que el `!== "verified"` anterior), salvo `rejected`.
+  // D-209/D-071: la verificación solo aplica a episodios `source==="owner"`;
+  // los de taller llevan `verification === null` → NO cuentan como pendientes.
+  // (Antes `!== "verified" && !== "rejected"` los contaba como pendientes.)
+  // Se conserva la garantía defensiva para valores owner desconocidos.
   const hasPending = careEpisodes.some(
     (episode) =>
+      episode.source === "owner" &&
       episode.verification !== "verified" &&
       episode.verification !== "rejected",
   );

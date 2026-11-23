@@ -149,22 +149,26 @@ export function TraceabilitySummaryCard({
             <span className="text-xs text-muted-foreground">
               {careRegistrant(latestCare)}
             </span>
-            <Badge
-              variant={
-                latestCare.verification === "verified"
-                  ? "success"
+            {/* Badge de verificación SOLO para episodios owner (D-209);
+                los de taller no llevan verificación (`null`). */}
+            {latestCare.source === "owner" && (
+              <Badge
+                variant={
+                  latestCare.verification === "verified"
+                    ? "success"
+                    : latestCare.verification === "rejected"
+                      ? "destructive"
+                      : "warning"
+                }
+                className="text-xs"
+              >
+                {latestCare.verification === "verified"
+                  ? "Verificada"
                   : latestCare.verification === "rejected"
-                    ? "destructive"
-                    : "warning"
-              }
-              className="text-xs"
-            >
-              {latestCare.verification === "verified"
-                ? "Verificada"
-                : latestCare.verification === "rejected"
-                  ? "Rechazado"
-                  : "Sin verificar"}
-            </Badge>
+                    ? "Rechazado"
+                    : "Sin verificar"}
+              </Badge>
+            )}
           </span>
         ) : undefined,
     },
