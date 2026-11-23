@@ -46,6 +46,13 @@ export interface SessionUser {
     /** Contrato real de GET /auth/me (§28 §3.4): objeto de rol, espejo de workshopMemberships. */
     role: { id: string; code: string; name: string };
   }>;
+  /**
+   * Impersonación (D-016): presentes SOLO cuando la sesión es una
+   * impersonación (super_admin navegando como otro usuario). Ausentes en
+   * sesiones normales.
+   */
+  impersonated?: boolean;
+  impersonatedBy?: string;
 }
 
 export interface AuthErrorEnvelope {
