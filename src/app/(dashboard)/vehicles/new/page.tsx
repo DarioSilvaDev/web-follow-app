@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 import { useActiveContext } from "@/hooks/use-active-context";
 import { getActiveContext } from "@/lib/active-context";
+import { isValidLicensePlate } from "@/lib/license-plate";
 import { invalidateVehicleViews } from "@/lib/query-keys";
 import { vehicleApi } from "@/lib/api";
 import {
@@ -134,7 +135,7 @@ export default function NewVehiclePage() {
   const modelYearValue = watch("modelYear") ?? "";
   const colorValue = watch("color") ?? "";
 
-  const plateComplete = /^[a-zA-Z0-9]{2,10}$/.test(plateValue.trim());
+  const plateComplete = isValidLicensePlate(plateValue);
   const mileageComplete = /^\d+$/.test(mileageValue.trim());
   const modelYearComplete = /^\d{4}$/.test(modelYearValue.trim());
   const colorComplete = colorValue.trim() !== "";

@@ -54,12 +54,16 @@ vi.mock("@/components/ui/input", () => ({
     sanitize,
     onChange,
     ...props
-  }: React.ComponentProps<"input"> & { sanitize?: "digits" }) => (
+  }: React.ComponentProps<"input"> & { sanitize?: "digits" | "plate" }) => (
     <input
       {...props}
       onChange={(event) => {
         if (sanitize === "digits") {
           event.target.value = event.target.value.replace(/\D/g, "");
+        } else if (sanitize === "plate") {
+          event.target.value = event.target.value
+            .replace(/[^A-Za-z0-9]/g, "")
+            .toUpperCase();
         }
         onChange?.(event);
       }}
@@ -167,19 +171,41 @@ const openDetalles = (user: ReturnType<typeof userEvent.setup>) =>
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("Vehicle register form", () => {
-  it("blocks submit with an invalid plate (non-alphanumeric)", async () => {
+  it("blocks submit with an invalid plate (format AAA111 / AA111AA)", async () => {
     const user = userEvent.setup();
     mockListBrands.mockResolvedValue([]);
 
     renderForm();
     await openIdentificacion(user);
 
+    // El sanitize "plate" deja solo letras/números: "A!" queda como "A",
+    // que no cumple ninguno de los dos formatos.
     await user.type(screen.getByLabelText(/patente/i), "A!");
     await user.click(screen.getByRole("button", { name: /registrar vehículo/i }));
 
     await waitFor(() => {
       expect(
-        screen.getByText("La patente solo puede contener letras y números"),
+        screen.getByText("La patente debe tener el formato AAA111 o AA111AA."),
+      ).toBeInTheDocument();
+    });
+    expect(mockRegister).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("blocks submit when the letter/digit order does not match the format", async () => {
+    const user = userEvent.setup();
+    mockListBrands.mockResolvedValue([]);
+
+    renderForm();
+    await openIdentificacion(user);
+
+    // 3.er dígito → patente nueva AA111AA, pero el 6to carácter es un dígito.
+    await user.type(screen.getByLabelText(/patente/i), "AB1234C");
+    await user.click(screen.getByRole("button", { name: /registrar vehículo/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("La patente debe tener el formato AAA111 o AA111AA."),
       ).toBeInTheDocument();
     });
     expect(mockRegister).not.toHaveBeenCalled();
@@ -247,9 +273,10 @@ describe("Vehicle register form", () => {
       ).toBeInTheDocument();
     });
 
-    // RF-6: the form retains the entered values
+    // RF-6: the form retains the entered values (el input de patente fuerza
+    // mayúsculas, así que "abc123" se muestra como "ABC123").
     const plateInput = screen.getByLabelText(/patente/i) as HTMLInputElement;
-    expect(plateInput.value).toBe("abc123");
+    expect(plateInput.value).toBe("ABC123");
     expect(mockPush).not.toHaveBeenCalled();
   });
 
