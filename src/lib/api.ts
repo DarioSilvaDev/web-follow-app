@@ -33,6 +33,9 @@ import type {
 import type {
   AdminDealershipDetail,
   AdminDealershipListResponse,
+  AdminEntityRoleItem,
+  AdminMemberItem,
+  AdminAddMemberResult,
   AdminSystemRoleItem,
   AdminUserDetail,
   AdminUserListResponse,
@@ -43,6 +46,7 @@ import type {
   CreateAdminDealershipResult,
   CreateAdminWorkshopInput,
   CreateAdminWorkshopResult,
+  ImpersonateUserResult,
   InvitePlatformUserInput,
   InvitePlatformUserResult,
   ListAdminUsersInput,
@@ -422,6 +426,19 @@ export const authApi = {
       // incluso si la API falla — un workshopId/dealershipId stale rompería el
       // próximo login (ContextResolver, D-020 / D-TL-12).
       .finally(() => clearActiveContext()),
+
+  /**
+   * POST /auth/stop-impersonate — termina la impersonación activa: el
+   * backend re-firma un token de ADMIN fresco (cookie access_token httpOnly)
+   * y devuelve `{ success: true }`.
+   * 403 si la sesión actual no es una impersonación; 404 si la sesión de
+   * impersonación ya no existe (p. ej. expiró y fue eliminada).
+   */
+  stopImpersonate: () =>
+    api
+      .post("auth/stop-impersonate")
+      .json<{ success: boolean }>()
+      .catch(toApiError),
 
   me: () => api.get("auth/me").json<SessionUser>().catch(toApiError),
 
@@ -1599,10 +1616,13 @@ export const adminApi = {
     page = 1,
     limit = 10,
     status,
+    q,
   }: {
     page?: number;
     limit?: number;
     status?: "pending_claim" | "active";
+    /** Búsqueda por nombre/legalName/taxId (mín. 2 chars, 400 si menos). */
+    q?: string;
   } = {}) =>
     api
       .get("admin/dealerships", {
@@ -1610,6 +1630,7 @@ export const adminApi = {
           page,
           limit,
           ...(status ? { status } : {}),
+          ...(q ? { q } : {}),
         },
       })
       .json<AdminDealershipListResponse>()
@@ -1671,10 +1692,13 @@ export const adminApi = {
     page = 1,
     limit = 10,
     status,
+    q,
   }: {
     page?: number;
     limit?: number;
     status?: "pending_claim" | "active";
+    /** Búsqueda por nombre/legalName/taxId (mín. 2 chars, 400 si menos). */
+    q?: string;
   } = {}) =>
     api
       .get("admin/workshops", {
@@ -1682,6 +1706,7 @@ export const adminApi = {
           page,
           limit,
           ...(status ? { status } : {}),
+          ...(q ? { q } : {}),
         },
       })
       .json<AdminWorkshopListResponse>()
@@ -1735,6 +1760,7 @@ export const adminApi = {
           ...(input.q ? { q: input.q } : {}),
           ...(input.status ? { status: input.status } : {}),
           ...(input.role ? { role: input.role } : {}),
+          ...(input.membership ? { membership: input.membership } : {}),
         },
       })
       .json<AdminUserListResponse>()
@@ -1780,4 +1806,134 @@ export const adminApi = {
   /** GET /admin/roles → roles de sistema (resuelve roleType → roleId). */
   listRoles: () =>
     api.get("admin/roles").json<AdminSystemRoleItem[]>().catch(toApiError),
+
+  /**
+   * DELETE /admin/users/:id — baja lógica (deletedAt) del usuario.
+   * 400 si es la propia cuenta o el último super_admin.
+   */
+  deleteUser: (userId: string) =>
+    api
+      .delete(`admin/users/${encodeURIComponent(userId)}`)
+      .then(() => undefined as void)
+      .catch(toApiError),
+
+  /**
+   * POST /admin/users/:id/impersonate — setea la cookie httpOnly `access_token`
+   * con el token del usuario objetivo (1h). Devuelve `{ user }`. 404 si el
+   * objetivo no existe o no está activo. Permiso admin.users.manage.
+   */
+  impersonateUser: (userId: string) =>
+    api
+      .post(`admin/users/${encodeURIComponent(userId)}/impersonate`)
+      .json<ImpersonateUserResult>()
+      .catch(toApiError),
+
+  // -----------------------------------------------------------------------
+  // Miembros de taller (panel superadmin) — permisos admin.workshops.members
+  // (listado de roles: admin.workshops.roles)
+  // -----------------------------------------------------------------------
+
+  /** GET /admin/workshops/:id/members — TODAS las membresías (incluye inactivas). */
+  listWorkshopMembers: (workshopId: string) =>
+    api
+      .get(`admin/workshops/${encodeURIComponent(workshopId)}/members`)
+      .json<AdminMemberItem[]>()
+      .catch(toApiError),
+
+  /** GET /admin/workshops/:id/roles — roles del taller (id/code/name + permissions). */
+  listWorkshopRoles: (workshopId: string) =>
+    api
+      .get(`admin/workshops/${encodeURIComponent(workshopId)}/roles`)
+      .json<AdminEntityRoleItem[]>()
+      .catch(toApiError),
+
+  /** POST /admin/workshops/:id/members { email, roleId } — alta directa (el email debe pertenecer a un usuario registrado). Reactiva membresía inactive previa si existía; `reactivated` lo distingue. */
+  addWorkshopMember: (
+    workshopId: string,
+    input: { email: string; roleId: string },
+  ) =>
+    api
+      .post(`admin/workshops/${encodeURIComponent(workshopId)}/members`, {
+        json: input,
+      })
+      .json<AdminAddMemberResult>()
+      .catch(toApiError),
+
+  /** PATCH /admin/workshops/:id/members/:memberId/role { roleId }. */
+  updateWorkshopMemberRole: (
+    workshopId: string,
+    memberId: string,
+    roleId: string,
+  ) =>
+    api
+      .patch(
+        `admin/workshops/${encodeURIComponent(workshopId)}/members/${encodeURIComponent(memberId)}/role`,
+        { json: { roleId } },
+      )
+      .then(() => undefined as void)
+      .catch(toApiError),
+
+  /** DELETE /admin/workshops/:id/members/:memberId — baja suave (status=inactive + leftAt). */
+  removeWorkshopMember: (workshopId: string, memberId: string) =>
+    api
+      .delete(
+        `admin/workshops/${encodeURIComponent(workshopId)}/members/${encodeURIComponent(memberId)}`,
+      )
+      .then(() => undefined as void)
+      .catch(toApiError),
+
+  // -----------------------------------------------------------------------
+  // Miembros de concesionaria (panel superadmin) — permiso
+  // admin.dealerships.members. ⚠️ Pendiente de `npm run db:seed` en el
+  // backend (permiso inexistente en BD) → 403 hasta sincronizar.
+  // -----------------------------------------------------------------------
+
+  /** GET /admin/dealerships/:id/members — TODAS las membresías (incluye inactivas). */
+  listDealershipMembers: (dealershipId: string) =>
+    api
+      .get(`admin/dealerships/${encodeURIComponent(dealershipId)}/members`)
+      .json<AdminMemberItem[]>()
+      .catch(toApiError),
+
+  /** GET /admin/dealerships/:id/roles — roles de la concesionaria (id/code/name + permissions). */
+  listDealershipRoles: (dealershipId: string) =>
+    api
+      .get(`admin/dealerships/${encodeURIComponent(dealershipId)}/roles`)
+      .json<AdminEntityRoleItem[]>()
+      .catch(toApiError),
+
+  /** POST /admin/dealerships/:id/members { email, roleId } — alta directa; reactiva membresía inactive si existía; `reactivated` lo distingue. */
+  addDealershipMember: (
+    dealershipId: string,
+    input: { email: string; roleId: string },
+  ) =>
+    api
+      .post(`admin/dealerships/${encodeURIComponent(dealershipId)}/members`, {
+        json: input,
+      })
+      .json<AdminAddMemberResult>()
+      .catch(toApiError),
+
+  /** PATCH /admin/dealerships/:id/members/:memberId/role { roleId }. */
+  updateDealershipMemberRole: (
+    dealershipId: string,
+    memberId: string,
+    roleId: string,
+  ) =>
+    api
+      .patch(
+        `admin/dealerships/${encodeURIComponent(dealershipId)}/members/${encodeURIComponent(memberId)}/role`,
+        { json: { roleId } },
+      )
+      .then(() => undefined as void)
+      .catch(toApiError),
+
+  /** DELETE /admin/dealerships/:id/members/:memberId — baja suave (status=inactive + leftAt). */
+  removeDealershipMember: (dealershipId: string, memberId: string) =>
+    api
+      .delete(
+        `admin/dealerships/${encodeURIComponent(dealershipId)}/members/${encodeURIComponent(memberId)}`,
+      )
+      .then(() => undefined as void)
+      .catch(toApiError),
 };
