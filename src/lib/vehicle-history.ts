@@ -45,13 +45,14 @@ export interface TimelineEntry {
   /** Texto secundario (actor / fuente / nombres), cuando aplica. */
   actor?: string;
   /**
-   * Leyenda de estado del episodio (D-071). Iteración 2-3: "Pendiente de
-   * verificación" para owner sin verificar; "Rechazado por {taller}" para
-   * `verification === "rejected"` (fallback "Rechazado por el taller
-   * responsable"). El texto "Verificado por {taller}" NUNCA vive acá: es el
-   * `actor` del episodio owner verificado y su gate exclusivo es
-   * `verification === "verified"` (TL §3.3 — nunca por presencia de
-   * `workshop`).
+   * Leyenda de estado del episodio (D-071). Solo episodios `source === "owner"`
+   * (D-209): "Pendiente de verificación" para `verification === "unverified"`;
+   * "Rechazado por {taller}" para `verification === "rejected"` (fallback
+   * "Rechazado por el taller responsable"). Episodios `source === "workshop"`
+   * (o `verification === null`) NO llevan badge. El texto "Verificado por
+   * {taller}" NUNCA vive acá: es el `actor` del episodio owner verificado y su
+   * gate exclusivo es `verification === "verified"` (TL §3.3 — nunca por
+   * presencia de `workshop`).
    */
   badge?: string;
   /** Notas de la fuente, si existen. */
@@ -155,7 +156,8 @@ function userName(user?: { firstName: string; lastName: string }): string {
  * - Cares (2-3): date = `serviceDate ?? checkedInAt ?? createdAt` (D-070);
  *   título `title ?? fallback por source` (D-071); actor según source y
  *   verification; sufijo "(cancelada)" si `status === "cancelled"`;
- *   badge "Pendiente de verificación" solo owner unverified; badge
+ *   badge "Pendiente de verificación" solo owner + `verification ===
+ *   "unverified"`; badge
  *   "Rechazado por {taller}" (fallback "Rechazado por el taller responsable")
  *   para `verification === "rejected"` con el ACTOR intacto — "Registrado por
  *   el propietario" (D-063: el origen no cambia). El actor "Verificado por
@@ -264,9 +266,13 @@ export function mergeHistory(history: VehicleHistoryResponse): TimelineEntry[] {
       badge = workshopName
         ? `Rechazado por ${workshopName}`
         : "Rechazado por el taller responsable";
-    } else {
+    } else if (care.verification === "unverified") {
       actor = "Registrado por el propietario";
       badge = "Pendiente de verificación";
+    } else {
+      // `verification === null` en episodio owner (fuera de contrato, D-209):
+      // defensivo — sin badge; la verificación no aplica / no se infiere.
+      actor = "Registrado por el propietario";
     }
 
     // Plan 05 / F-TZ-6 (D-TZ-7): `serviceDate` solo es fecha calendario si

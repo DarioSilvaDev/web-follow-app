@@ -210,3 +210,23 @@ describe("TraceabilitySummaryCard â€” rechazo de verificaciÃ³n", () => {
     expect(screen.queryByText("Sin verificar")).not.toBeInTheDocument();
   });
 });
+
+// -- D-209/D-071: verificación no aplica a episodios de taller ----------------
+
+describe("TraceabilitySummaryCard — episodio de taller (verification null)", () => {
+  it("registrante \'Registrado por {taller}\' SIN badge de verificación", () => {
+    renderCard([
+      makeCareEpisode({
+        source: "workshop",
+        verification: null,
+        workshop: { id: "w1", name: "Taller Norte" },
+        workshopName: "Taller Norte",
+      }),
+    ]);
+
+    expect(screen.getByText("Registrado por Taller Norte")).toBeInTheDocument();
+    expect(screen.queryByText("Sin verificar")).not.toBeInTheDocument();
+    expect(screen.queryByText("Verificada")).not.toBeInTheDocument();
+    expect(screen.queryByText("Rechazado")).not.toBeInTheDocument();
+  });
+});

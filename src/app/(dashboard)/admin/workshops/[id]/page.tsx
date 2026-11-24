@@ -13,7 +13,8 @@
  *   estado usa un Dialog de confirmación (PATCH /admin/workshops/:id/status).
  * - Banner pending_claim (agotado): reenvía la invitación (POST
  *   /admin/workshops/:id/invitations).
- * - Card miembros y Card sucursales (solo lectura informativa).
+ * - Card miembros administrada (permiso admin.workshops.members) y Card
+ *   sucursales.
  *
  * Estados de error (patrón RF-6): 404 → "Taller no encontrado"; 403 →
  * "Acceso denegado"; genérico → reintentar.
@@ -25,6 +26,7 @@ import { Loader2, RefreshCw, Store } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { EntityNotFoundState } from "@/components/admin/entity-not-found-state";
+import { EntityMembersAdminSection } from "@/components/admin/entity-members-admin-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,6 +45,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { adminApi, isHTTPError } from "@/lib/api";
+import { useAuth } from "@/hooks/use-auth";
+import { can } from "@/lib/admin-access";
 import {
   resolveAdminWorkshopDetailError,
   resolveResendWorkshopInvitationError,
@@ -69,6 +73,7 @@ function formatDate(iso: string | null | undefined): string {
 export default function AdminWorkshopDetailPage() {
   const params = useParams<{ id: string }>();
   const workshopId = params?.id;
+  const { user: sessionUser } = useAuth();
   const queryClient = useQueryClient();
   const [banner, setBanner] = useState<string | null>(null);
 
@@ -349,44 +354,13 @@ export default function AdminWorkshopDetailPage() {
         </Card>
       )}
 
-      {workshop.members.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Miembros</CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <caption className="sr-only">Miembros del taller</caption>
-              <thead>
-                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                  <th scope="col" className="px-3 py-2 font-medium">Nombre</th>
-                  <th scope="col" className="px-3 py-2 font-medium">Email</th>
-                  <th scope="col" className="px-3 py-2 font-medium">Rol</th>
-                  <th scope="col" className="px-3 py-2 font-medium">Ingreso</th>
-                </tr>
-              </thead>
-              <tbody>
-                {workshop.members.map((member) => (
-                  <tr key={member.id} className="border-b border-border last:border-b-0">
-                    <td className="px-3 py-2.5 font-medium text-foreground">
-                      {member.userName}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {member.userEmail}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <Badge variant="secondary">{member.roleName}</Badge>
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {formatDate(member.joinedAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      )}
+      <EntityMembersAdminSection
+        entityType="workshop"
+        entityId={workshop.id}
+        entityName={workshop.name}
+        canManage={can(sessionUser, "admin.workshops.members")}
+        fallbackMembers={workshop.members}
+      />
 
       {workshop.branches.length > 0 && (
         <Card>

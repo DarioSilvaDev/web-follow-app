@@ -12,7 +12,8 @@
  *   miembros y botón "Reenviar invitación" cuando la invitación sigue vigente
  *   (POST /admin/dealerships/:id/invitations).
  * - Banner pending_claim (agotado): reenvía la invitación al dueño.
- * - Card miembros (solo lectura informativa).
+ * - Card miembros administrada (permiso admin.dealerships.members; fallback
+ *   de solo lectura si falta).
  *
  * Habilitar/Deshabilitar (handoff PM Fase 3, P2/P3): trigger con dialog de
  * confirmación (AdminStatusChangeDialog) — PATCH /admin/dealerships/:id/status,
@@ -25,10 +26,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Loader2, RefreshCw, Store } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { EntityNotFoundState } from "@/components/admin/entity-not-found-state";
+import { EntityMembersAdminSection } from "@/components/admin/entity-members-admin-section";
 import { AdminStatusChangeDialog } from "@/components/admin/admin-status-change-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -343,55 +345,13 @@ export default function AdminDealershipDetailPage() {
         </Card>
       )}
 
-      {dealership.members.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Miembros</CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <caption className="sr-only">Miembros de la concesionaria</caption>
-              <thead>
-                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                  <th scope="col" className="px-3 py-2 font-medium">Nombre</th>
-                  <th scope="col" className="px-3 py-2 font-medium">Email</th>
-                  <th scope="col" className="px-3 py-2 font-medium">Rol</th>
-                  <th scope="col" className="px-3 py-2 font-medium">Ingreso</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dealership.members.map((member) => (
-                  <tr
-                    key={member.id}
-                    className="border-b border-border last:border-b-0"
-                  >
-                    <td className="px-3 py-2.5 font-medium text-foreground">
-                      {member.userName}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {member.userEmail}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <Badge variant="secondary">{member.roleName}</Badge>
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {formatDate(member.joinedAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      )}
-
-      {dealership.members.length === 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-          <Store className="h-4 w-4 shrink-0 text-primary" />
-          La concesionaria se activará cuando el dueño complete el alta desde
-          la invitación.
-        </div>
-      )}
+      <EntityMembersAdminSection
+        entityType="dealership"
+        entityId={dealership.id}
+        entityName={dealership.name}
+        canManage={can(user, "admin.dealerships.members")}
+        fallbackMembers={dealership.members}
+      />
 
       <AdminStatusChangeDialog
         open={statusDialogOpen}

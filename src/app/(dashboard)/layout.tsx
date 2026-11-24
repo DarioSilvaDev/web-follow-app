@@ -33,6 +33,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContextChip } from "@/components/layout/context-chip";
+import { ImpersonationBanner } from "@/components/layout/impersonation-banner";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { AccountMenu } from "@/components/layout/account-menu";
@@ -84,6 +85,12 @@ export default function DashboardLayout({
     }
   };
 
+  // Offset para el header sticky cuando la sesión es impersonada: el banner
+  // global ocupa h-11 (2.75rem) sticky en el top; el header se corre esa
+  // misma distancia para no quedar tapado. Variable CSS para no tocar el
+  // sidebar fijo ni otros sticky del shell.
+  const isImpersonating = Boolean(user?.impersonated);
+
   const initials = user
     ? [user.firstName?.[0], user.lastName?.[0]]
         .filter(Boolean)
@@ -106,7 +113,14 @@ export default function DashboardLayout({
   });
 
   return (
-    <div className="min-h-screen">
+    <div
+      className="min-h-screen"
+      style={
+        isImpersonating
+          ? ({ "--impersonation-offset": "2.75rem" } as React.CSSProperties)
+          : undefined
+      }
+    >
       {/* Sidebar desktop (≥ lg) — en mobile queda fuera del árbol de
           accesibilidad vía `hidden`; su rol lo cumple el drawer. */}
       <AppSidebar
@@ -118,8 +132,12 @@ export default function DashboardLayout({
       />
 
       <div className="flex min-h-screen flex-col lg:pl-60">
+        {/* Banner global de impersonación (D-016): sticky, solo visible con
+            sesión impersonada. Va primero en la columna de contenido. */}
+        <ImpersonationBanner />
+
         {/* Header compacto */}
-        <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
+        <header className="sticky top-[var(--impersonation-offset,0px)] z-30 border-b border-border bg-background/95 backdrop-blur">
           <div className="mx-auto flex h-14 w-full max-w-screen-xl items-center justify-between gap-3 px-4">
             <div className="flex min-w-0 items-center gap-2">
               <Button

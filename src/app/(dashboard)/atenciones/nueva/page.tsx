@@ -45,6 +45,10 @@ import {
   resolveLookupErrorMessage,
   type CheckInErrorField,
 } from "@/lib/check-in-errors";
+import {
+  LICENSE_PLATE_FORMAT_ERROR,
+  isValidLicensePlate,
+} from "@/lib/license-plate";
 import { isValidVin, normalizeVin } from "@/lib/vin";
 import type {
   CareEpisodeAttachment,
@@ -957,6 +961,9 @@ export default function NewCareEpisodePage() {
 
   // ── Búsqueda por patente ────────────────────────────────────────────────────
   const [plateInput, setPlateInput] = useState("");
+  // Error de formato (AAA111 / AA111AA) — se valida ANTES del lookup para no
+  // consultar/persistir una patente que el backend rechazaría igual.
+  const [plateFormatError, setPlateFormatError] = useState<string | null>(null);
   const [lookup, setLookup] = useState<LookupState>({ status: "idle" });
   const [confirmedVehicle, setConfirmedVehicle] = useState(false);
   const lastPlateRef = useRef("");
@@ -1101,6 +1108,15 @@ export default function NewCareEpisodePage() {
 
   const handleLookupSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    // Control de formato: solo AAA111 (3.er carácter letra) o AA111AA (3.er
+    // carácter número). Sin formato válido no se consulta el backend.
+    if (!isValidLicensePlate(plateInput)) {
+      setPlateFormatError(LICENSE_PLATE_FORMAT_ERROR);
+      setLookup({ status: "idle" });
+      setConfirmedVehicle(false);
+      return;
+    }
+    setPlateFormatError(null);
     void runLookup(plateInput);
   };
 
@@ -1108,6 +1124,7 @@ export default function NewCareEpisodePage() {
   // poder enviar (nunca se reutiliza el vehículo de una patente anterior).
   const handlePlateChange = (value: string) => {
     setPlateInput(value);
+    setPlateFormatError(null);
     if (lookup.status !== "idle" && lookup.status !== "searching") {
       setLookup({ status: "idle" });
       setConfirmedVehicle(false);
@@ -1291,6 +1308,7 @@ export default function NewCareEpisodePage() {
     setLookup({ status: "idle" });
     setConfirmedVehicle(false);
     setPlateInput("");
+    setPlateFormatError(null);
     setSubmitError(null);
     setBeforePhotoCount(0);
     setSkipBeforePhoto(false);
@@ -1379,8 +1397,10 @@ export default function NewCareEpisodePage() {
                     id="plate"
                     ref={plateInputRef}
                     placeholder="Ej. ABC123"
-                    maxLength={10}
+                    sanitize="plate"
+                    maxLength={7}
                     autoComplete="off"
+                    aria-invalid={plateFormatError ? true : undefined}
                     value={plateInput}
                     onChange={(event) => handlePlateChange(event.target.value)}
                   />
@@ -1398,6 +1418,15 @@ export default function NewCareEpisodePage() {
                     Buscar
                   </Button>
                 </div>
+                {plateFormatError ? (
+                  <p className="text-sm text-destructive" role="alert">
+                    {plateFormatError}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Formato: AAA111 (vieja) o AA111AA (nueva).
+                  </p>
+                )}
               </form>
 
               {lookup.status === "searching" && (
