@@ -273,6 +273,12 @@ export interface AdminUserItem {
   status: string;
   createdAt: string;
   roles: AdminUserRoleItem[];
+  /** Membresías de taller ACTIVAS (aditivo, contadores server-side). */
+  workshopCount: number;
+  /** Membresías de concesionaria ACTIVAS (aditivo). */
+  dealershipCount: number;
+  /** Tenencias vigentes de vehículos (endsAt null) (aditivo). */
+  vehicleCount: number;
 }
 
 /** `GET /admin/users` → meta del envelope. */
@@ -294,8 +300,10 @@ export interface ListAdminUsersInput {
   page?: number;
   limit?: number;
   q?: string;
-  status?: string;
-  role?: string;
+  status?: AdminUserStatus | string;
+  role?: AdminUserPlatformRoleFilter | string;
+  /** Filtro por vínculo con el ecosistema (400 si inválido). */
+  membership?: AdminUserMembershipFilter;
 }
 
 /** `GET /admin/users/:id` → UserDetailAdminResponseDto. */
@@ -306,6 +314,18 @@ export interface AdminUserDetail extends AdminUserItem {
   emailVerifiedAt: string | null;
   lastLoginAt: string | null;
   updatedAt: string;
+  /** Membresías de taller vigentes (pending/active/suspended; NO inactivas). Aditivo. */
+  workshopMemberships: AdminUserWorkshopMembership[];
+  /** Membresías de concesionaria vigentes (NO inactivas). Aditivo. */
+  dealershipMemberships: AdminUserDealershipMembership[];
+  /** Historial de membresías de taller dadas de baja (opcional; default []). Aditivo. */
+  inactiveWorkshopMemberships?: AdminUserWorkshopMembership[];
+  /** Historial de membresías de concesionaria dadas de baja (opcional; default []). Aditivo. */
+  inactiveDealershipMemberships?: AdminUserDealershipMembership[];
+  /** Tenencias vigentes (endsAt null). Aditivo. */
+  vehicles: AdminUserVehicleSummary[];
+  /** Accesos vigentes (no revocados, no expirados). Aditivo. */
+  vehicleAccesses: AdminUserVehicleAccess[];
 }
 
 /** `PATCH /admin/users/:id/status` → body (UserStatus de Prisma). */
@@ -437,4 +457,140 @@ export type UpdateAdminDealershipInput = Partial<
 /** `PATCH /api/admin/dealerships/:id/status` → body (P2, permiso P3). */
 export interface UpdateAdminDealershipStatusInput {
   isActive: boolean;
+}
+/* ------------------------------------------------------------------ */
+/* Panel de usuarios 360 (panel superadmin) — contrato backend VERIFICADO */
+/* (working tree de api-follow-app, aditivo sobre contratos congelados). */
+/* ------------------------------------------------------------------ */
+
+/** Filtro por vínculo con el ecosistema en `GET /admin/users` (400 si inválido). */
+export type AdminUserMembershipFilter =
+  | "workshop"
+  | "dealership"
+  | "vehicle"
+  | "none";
+
+/** Filtro de rol de plataforma en `GET /admin/users` (400 si inválido). */
+export type AdminUserPlatformRoleFilter = "admin" | "support";
+
+/** Membresía de taller dentro de `GET /admin/users/:id`. */
+export interface AdminUserWorkshopMembership {
+  id: string;
+  workshopId: string;
+  workshopName: string;
+  /** pending_claim | active (estado de la entidad). */
+  workshopStatus: string;
+  roleId: string;
+  roleCode: string;
+  roleName: string;
+  defaultBranchId: string | null;
+  defaultBranchName: string | null;
+  /** pending | active | inactive | suspended (estado de la membresía). */
+  status: string;
+  joinedAt: string;
+  /** Baja suave (null en vigentes; fecha de baja en inactivas, o null en casos viejos). Aditivo. */
+  leftAt?: string | null;
+}
+
+/** Membresía de concesionaria dentro de `GET /admin/users/:id`. */
+export interface AdminUserDealershipMembership {
+  id: string;
+  dealershipId: string;
+  dealershipName: string;
+  dealershipStatus: string;
+  dealershipIsActive: boolean;
+  roleId: string;
+  roleCode: string;
+  roleName: string;
+  /** pending | active | inactive | suspended (estado de la membresía). */
+  status: string;
+  joinedAt: string;
+  /** Baja suave (null en vigentes; fecha de baja en inactivas, o null en casos viejos). Aditivo. */
+  leftAt?: string | null;
+}
+
+/** Tenencia vigente de vehículo dentro de `GET /admin/users/:id`. */
+export interface AdminUserVehicleSummary {
+  /** id de la ownership (no del vehículo). */
+  id: string;
+  vehicleId: string;
+  licensePlate: string;
+  brand: string | null;
+  model: string | null;
+  version: string | null;
+  color: string | null;
+  manufactureYear: number | null;
+  /** owner | co_owner | company */
+  ownershipType: string;
+  startsAt: string;
+  /** Nombre de la concesionaria si la tenencia es consignación (D-101/D-104). */
+  dealershipName: string | null;
+}
+
+/** Acceso vigente a vehículo de terceros dentro de `GET /admin/users/:id`. */
+export interface AdminUserVehicleAccess {
+  id: string;
+  vehicleId: string;
+  licensePlate: string;
+  brand: string | null;
+  model: string | null;
+  version: string | null;
+  color: string | null;
+  expiresAt: string | null;
+  grantedByName: string;
+  grantedByEmail: string;
+  createdAt: string;
+}
+
+/**
+ * `POST /admin/{workshops|dealerships}/:id/members` — respuesta (Aditivo).
+ * El backend devuelve la membresía cruda (+ campos del prisma member);
+ * la UI solo consume `reactivated`:
+ * - true  → existía una membresía inactive y se reactivó (joinedAt conservado; leftAt null).
+ * - false → alta nueva.
+ */
+export interface AdminAddMemberResult {
+  reactivated?: boolean;
+}
+
+/**
+ * Miembro expuesto por `GET /admin/{workshops|dealerships}/:id/members`
+ * (incluye inactivas; la UI distingue por `status`).
+ */
+export interface AdminMemberItem {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  roleId: string;
+  roleCode: string;
+  roleName: string;
+  /** pending | active | inactive | suspended */
+  status: string;
+  joinedAt: string;
+}
+
+/**
+ * Rol de entidad expuesto por `GET /admin/{workshops|dealerships}/:id/roles`.
+ * Payload crudo del backend (workshopRole/dealershipRole con `permissions`
+ * embebidos); la UI solo consume id/code/name/description/priority.
+ */
+export interface AdminEntityRoleItem {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  isSystem?: boolean;
+  priority?: number;
+}
+
+/** `POST /admin/users/:id/impersonate` — 200 `{ user }` (setea cookie httpOnly). */
+export interface ImpersonateUserResult {
+  user: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    roles: AdminUserRoleItem[];
+  };
 }

@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  LICENSE_PLATE_FORMAT_ERROR,
+  isValidLicensePlate,
+} from "@/lib/license-plate";
 import { isValidVin, normalizeVin } from "@/lib/vin";
 import type {
   RegisterVehicleInput,
@@ -11,7 +15,10 @@ import type {
 //
 // Single source of truth so the "alta" and "edición" forms do NOT diverge in
 // validation (RF-5). Mirrors the backend RegisterVehicleDto (F-010 §9):
-// - D-037: alphanumeric plate 2–10, normalized to uppercase + trim.
+// - D-037: plate normalized to uppercase + trim. The frontend goes BEYOND the
+//   backend (still 2–10 alphanumeric): registration forms only accept the
+//   Argentine formats AAA111 or AA111AA (`@/lib/license-plate`, decided by
+//   the 3rd character).
 // - D-036: VIN optional. D-038: catalog optional.
 // - D-04/D-145 (Gap 1): VIN is validated with the shared format rule when
 //   present (register only — see `editVehicleFormSchema`).
@@ -23,12 +30,14 @@ export const vehicleFormSchema = z.object({
   licensePlate: z
     .string()
     .trim()
-    .min(2, "La patente debe tener al menos 2 caracteres")
-    .max(10, "La patente debe tener como máximo 10 caracteres")
-    .refine(
-      (value) => /^[a-zA-Z0-9]+$/.test(value),
-      "La patente solo puede contener letras y números",
-    )
+    .superRefine((value, ctx) => {
+      if (!isValidLicensePlate(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: LICENSE_PLATE_FORMAT_ERROR,
+        });
+      }
+    })
     .transform((value) => value.toUpperCase()),
   vin: z
     .string()

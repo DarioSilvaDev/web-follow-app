@@ -4,13 +4,20 @@ import { cn } from "cn"
 
 /**
  * `sanitize` filtra caracteres no válidos ANTES de que el consumidor
- * (p. ej. react-hook-form) lea el valor: "digits" deja solo ASCII 0-9,
- * para campos numéricos de texto libre (kilometraje, año, teléfono).
+ * (p. ej. react-hook-form) lea el valor:
+ * - "digits": deja solo ASCII 0-9, para campos numéricos de texto libre
+ *   (kilometraje, año, teléfono).
+ * - "plate": deja solo letras/números y fuerza MAYÚSCULAS, para inputs de
+ *   registro de patente (formato AAA111 / AA111AA).
  */
-function Input({ className, type, sanitize, onChange, ...props }: React.ComponentProps<"input"> & { sanitize?: "digits" }) {
+function Input({ className, type, sanitize, onChange, ...props }: React.ComponentProps<"input"> & { sanitize?: "digits" | "plate" }) {
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (sanitize === "digits") {
       event.target.value = event.target.value.replace(/\D/g, "")
+    } else if (sanitize === "plate") {
+      event.target.value = event.target.value
+        .replace(/[^A-Za-z0-9]/g, "")
+        .toUpperCase()
     }
     onChange?.(event)
   }

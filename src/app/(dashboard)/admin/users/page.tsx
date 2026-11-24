@@ -1,31 +1,33 @@
 "use client";
 
 /**
- * Listado admin de usuarios de plataforma — /admin/users (Fase 2/3 handoff
- * PM: listado expandible Propuesta B).
+ * Listado admin de usuarios de plataforma — /admin/users.
  *
- * Fuente: GET /admin/users?page&limit&q&status (permiso admin.users.list).
- * Búsqueda por q con debounce 300ms; filtro por estado UserStatus
- * (pending/active/suspended).
+ * Fuente: GET /admin/users?page&limit&q&status&role&membership (permiso
+ * admin.users.list). Búsqueda por q con debounce 300ms; filtro por estado
+ * UserStatus y por rol de plataforma (admin|support); filtro NUEVO por
+ * vínculo con el ecosistema (workshop|dealership|vehicle|none → 400 si
+ * inválido).
  *
- * - Badge de estado efectivo SOLO por status de cuenta (P6: sin expiración de
- *   invitaciones en usuarios — el helper admin-status.ts lo garantiza).
- * - Expansión (Propuesta B): email, roles y alta + acción "Ver detalle".
+ * - Tabla DENSA (reemplaza las tarjetas expandibles): Usuario (link al
+ *   detalle) / Estado / Roles / Talleres / Concesionarias / Vehículos.
+ *   Los contadores de vínculos los computa el backend (aditivo).
+ * - Orden: pendientes primero (server-side, espejo de workshops/dealerships);
+ *   NO se ofrece sort client-side que lo contradiga.
+ * - Badge de estado SOLO por status de cuenta (P6).
+ * - q de 1 char lo rechaza el server con 400: el frontend solo dispara la
+ *   búsqueda con ≥2 chars.
  *
- * Interacción (acordeón): una sola fila expandida; se cierra al cambiar
- * filtro, búsqueda o página (decidido para dealerships/talleres y aplicado
- * igual acá por consistencia). Nombre NO navega.
- *
- * Query key: ["admin-users", page, status, q].
+ * Query key: ["admin-users", page, status, role, membership, q].
  */
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Plus, Search, UserRound } from "lucide-react";
+import { Plus, Search, UsersRound } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminTablePagination } from "@/components/admin/admin-table-pagination";
 import { AdminNoAccessState } from "@/components/admin/admin-no-access-state";
-import { AdminEntityStatusBadge } from "@/components/admin/admin-entity-status-badge";
 import { buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardDescription,
@@ -40,37 +42,78 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { adminApi } from "@/lib/api";
 import { resolveAdminUsersListError } from "@/lib/admin-errors";
 import { can } from "@/lib/admin-access";
-import { formatAdminDate } from "@/lib/admin-status";
 import { cn } from "cn";
-import type { AdminUserStatus } from "@/types/admin";
+import type {
+  AdminUserMembershipFilter,
+  AdminUserPlatformRoleFilter,
+  AdminUserStatus,
+} from "@/types/admin";
 
 const PAGE_SIZE = 10;
 
 type StatusFilter = "all" | AdminUserStatus;
+type RoleFilter = "all" | AdminUserPlatformRoleFilter;
+type MembershipFilter = "all" | AdminUserMembershipFilter;
+
+function renderStatusBadge(status: string) {
+  if (status === "suspended") {
+    return <Badge variant="destructive">Suspendido</Badge>;
+  }
+  if (status === "pending") {
+    return <Badge variant="warning">Pendiente</Badge>;
+  }
+  return <Badge variant="success">Activo</Badge>;
+}
+
+/** Contador de vínculos: "—" cuando es 0 (menos ruido visual). */
+function CountCell({ value }: { value: number }) {
+  return (
+    <span
+      className={cn(
+        "tabular-nums",
+        value === 0 ? "text-muted-foreground" : "font-medium text-foreground",
+      )}
+    >
+      {value === 0 ? "—" : value}
+    </span>
+  );
+}
 
 export default function AdminUsersPage() {
   const { user } = useAuth();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
+  const [membershipFilter, setMembershipFilter] =
+    useState<MembershipFilter>("all");
   const [search, setSearch] = useState("");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const debouncedSearch = useDebounce(search, 300);
+  const effectiveQuery =
+    debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined;
 
   const usersQuery = useQuery({
-    queryKey: ["admin-users", page, statusFilter, debouncedSearch],
+    queryKey: [
+      "admin-users",
+      page,
+      statusFilter,
+      roleFilter,
+      membershipFilter,
+      effectiveQuery,
+    ],
     queryFn: () =>
       adminApi.listUsers({
         page,
         limit: PAGE_SIZE,
-        q: debouncedSearch.trim() || undefined,
+        q: effectiveQuery,
         status: statusFilter === "all" ? undefined : statusFilter,
+        role: roleFilter === "all" ? undefined : roleFilter,
+        membership:
+          membershipFilter === "all" ? undefined : membershipFilter,
       }),
     retry: false,
   });
 
-  // Gate defensivo por permiso de sección (UX; llegó por URL directa sin el
-  // permiso admin.users.list). Backend sigue siendo la authority. Los hooks ya
-  // corrieron (rules-of-hooks).
+  // Gate defensivo por permiso de sección (UX; backend es la authority).
   if (!can(user, "admin.users.list")) {
     return <AdminNoAccessState />;
   }
@@ -78,15 +121,14 @@ export default function AdminUsersPage() {
   const items = usersQuery.data?.data ?? [];
   const meta = usersQuery.data?.meta;
 
-  const handleStatusFilter = (value: string) => {
-    setStatusFilter(value as StatusFilter);
-    setPage(1);
-    // Cerrar la fila expandida al cambiar filtro, búsqueda o página
-    // (consistente con dealerships/talleres; NO al refetch de fondo).
-    setExpandedId(null);
-  };
+  const resetPage = () => setPage(1);
 
-  const isEmpty = meta?.total === 0 && !debouncedSearch.trim();
+  const isFiltered =
+    statusFilter !== "all" ||
+    roleFilter !== "all" ||
+    membershipFilter !== "all" ||
+    Boolean(effectiveQuery);
+  const isEmpty = meta?.total === 0 && !isFiltered;
 
   return (
     <>
@@ -94,7 +136,8 @@ export default function AdminUsersPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Usuarios</h1>
           <p className="text-sm text-muted-foreground">
-            Gestioná los usuarios de la plataforma, sus roles y su estado.
+            Gestioná los usuarios de la plataforma, sus vínculos, roles y su
+            estado.
           </p>
         </div>
         <Link
@@ -122,10 +165,9 @@ export default function AdminUsersPage() {
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
-                setPage(1);
-                setExpandedId(null);
+                resetPage();
               }}
-              placeholder="Nombre o email"
+              placeholder="Nombre o email (mín. 2 caracteres)"
               className="pl-10"
             />
           </div>
@@ -140,13 +182,60 @@ export default function AdminUsersPage() {
           <Select
             id="admin-users-status-filter"
             value={statusFilter}
-            onChange={(e) => handleStatusFilter(e.target.value)}
-            className="w-44"
+            onChange={(e) => {
+              setStatusFilter(e.target.value as StatusFilter);
+              resetPage();
+            }}
+            className="w-40"
           >
             <option value="all">Todos</option>
             <option value="pending">Pendiente</option>
             <option value="active">Activo</option>
             <option value="suspended">Suspendido</option>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="admin-users-role-filter"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            Rol
+          </label>
+          <Select
+            id="admin-users-role-filter"
+            value={roleFilter}
+            onChange={(e) => {
+              setRoleFilter(e.target.value as RoleFilter);
+              resetPage();
+            }}
+            className="w-36"
+          >
+            <option value="all">Todos</option>
+            <option value="admin">Admin</option>
+            <option value="support">Soporte</option>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="admin-users-membership-filter"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            Vínculo
+          </label>
+          <Select
+            id="admin-users-membership-filter"
+            value={membershipFilter}
+            onChange={(e) => {
+              setMembershipFilter(e.target.value as MembershipFilter);
+              resetPage();
+            }}
+            className="w-44"
+          >
+            <option value="all">Todos</option>
+            <option value="workshop">Taller</option>
+            <option value="dealership">Concesionaria</option>
+            <option value="vehicle">Con vehículos</option>
+            <option value="none">Sin vínculos</option>
           </Select>
         </div>
         <p className="pb-1 text-xs text-muted-foreground">
@@ -156,10 +245,10 @@ export default function AdminUsersPage() {
 
       {usersQuery.isLoading ? (
         <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
+          {Array.from({ length: 5 }).map((_, i) => (
             <div
               key={i}
-              className="h-16 animate-pulse rounded-xl border bg-muted/50"
+              className="h-12 animate-pulse rounded-xl border bg-muted/50"
             />
           ))}
         </div>
@@ -175,12 +264,12 @@ export default function AdminUsersPage() {
       ) : items.length === 0 ? (
         <Card>
           <EmptyState
-            icon={UserRound}
+            icon={UsersRound}
             title="No hay usuarios para mostrar"
             description={
               isEmpty
                 ? "Todavía no hay usuarios en la plataforma. Invitá al primer administrador para empezar a gestionar."
-                : "Ningún usuario coincide con la búsqueda o el filtro actual."
+                : "Ningún usuario coincide con la búsqueda o los filtros actuales."
             }
             action={
               <Link
@@ -195,106 +284,93 @@ export default function AdminUsersPage() {
         </Card>
       ) : (
         <>
-          <ul
+          <div
             aria-busy={usersQuery.isFetching}
-            className="overflow-hidden rounded-xl border bg-card shadow-sm"
+            className="overflow-x-auto rounded-xl border bg-card shadow-sm"
           >
-            {items.map((userItem) => {
-              const expanded = expandedId === userItem.id;
-              const displayName =
-                [userItem.firstName, userItem.lastName]
-                  .filter(Boolean)
-                  .join(" ") || userItem.email;
-              return (
-                <li
-                  key={userItem.id}
-                  className="border-b border-border last:border-b-0"
-                >
-                  <div className="px-2 py-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedId(expanded ? null : userItem.id)}
-                      aria-expanded={expanded}
-                      aria-controls={
-                        expanded ? `user-panel-${userItem.id}` : undefined
-                      }
-                      className="flex min-h-12 w-full items-center gap-4 rounded-lg px-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
+            <table className="w-full text-left text-sm">
+              <caption className="sr-only">
+                Usuarios de la plataforma con sus vínculos
+              </caption>
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <th scope="col" className="px-4 py-2.5 font-medium">
+                    Usuario
+                  </th>
+                  <th scope="col" className="px-3 py-2.5 font-medium">
+                    Estado
+                  </th>
+                  <th scope="col" className="px-3 py-2.5 font-medium">
+                    Roles
+                  </th>
+                  <th scope="col" className="px-3 py-2.5 text-center font-medium">
+                    Talleres
+                  </th>
+                  <th scope="col" className="px-3 py-2.5 text-center font-medium">
+                    Concesionarias
+                  </th>
+                  <th scope="col" className="px-3 py-2.5 text-center font-medium">
+                    Vehículos
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((userItem) => {
+                  const displayName =
+                    [userItem.firstName, userItem.lastName]
+                      .filter(Boolean)
+                      .join(" ") || userItem.email;
+                  return (
+                    <tr
+                      key={userItem.id}
+                      className="border-b border-border align-middle last:border-b-0"
                     >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {displayName}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {userItem.email}
-                        </p>
-                      </div>
-                      <div className="shrink-0">
-                        <AdminEntityStatusBadge
-                          entityType="user"
-                          entity={userItem}
-                        />
-                      </div>
-                      <ChevronDown
-                        aria-hidden="true"
-                        className={cn(
-                          "h-4 w-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none",
-                          expanded && "rotate-180",
-                        )}
-                      />
-                    </button>
-                  </div>
-
-                  {expanded && (
-                    <div
-                      id={`user-panel-${userItem.id}`}
-                      className="border-t border-border bg-muted/30 px-4 py-4"
-                    >
-                      <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        <div className="flex flex-col gap-1">
-                          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Email
-                          </dt>
-                          <dd className="text-sm text-foreground">
-                            {userItem.email}
-                          </dd>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Roles
-                          </dt>
-                          <dd className="text-sm text-foreground">
-                            {userItem.roles.length > 0
-                              ? userItem.roles.map((role) => role.name).join(", ")
-                              : "—"}
-                          </dd>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Alta
-                          </dt>
-                          <dd className="text-sm text-foreground">
-                            {formatAdminDate(userItem.createdAt)}
-                          </dd>
-                        </div>
-                      </dl>
-
-                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <td className="max-w-72 px-4 py-2">
                         <Link
                           href={`/admin/users/${userItem.id}`}
-                          className={cn(
-                            buttonVariants({ variant: "ghost", size: "sm" }),
-                            "gap-1",
-                          )}
+                          className="block truncate font-medium text-foreground underline-offset-4 hover:underline"
                         >
-                          Ver detalle
+                          {displayName}
                         </Link>
-                      </div>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {userItem.email}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        {renderStatusBadge(userItem.status)}
+                      </td>
+                      <td className="max-w-56 px-3 py-2">
+                        {userItem.roles.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {userItem.roles.map((role) => (
+                              <Badge
+                                key={role.id}
+                                variant="secondary"
+                                className="whitespace-nowrap"
+                              >
+                                {role.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <CountCell value={userItem.workshopCount} />
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <CountCell value={userItem.dealershipCount} />
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <CountCell value={userItem.vehicleCount} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
           {meta && meta.totalPages > 1 && (
             <AdminTablePagination
@@ -302,10 +378,7 @@ export default function AdminUsersPage() {
               totalPages={meta.totalPages}
               total={meta.total}
               isFetching={usersQuery.isFetching}
-              onPageChange={(next) => {
-                setPage(next);
-                setExpandedId(null);
-              }}
+              onPageChange={setPage}
             />
           )}
         </>

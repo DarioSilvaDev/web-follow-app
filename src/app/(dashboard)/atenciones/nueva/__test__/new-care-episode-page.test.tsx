@@ -114,12 +114,16 @@ vi.mock("@/components/ui/input", () => ({
     sanitize,
     onChange,
     ...props
-  }: React.ComponentProps<"input"> & { sanitize?: "digits" }) => (
+  }: React.ComponentProps<"input"> & { sanitize?: "digits" | "plate" }) => (
     <input
       {...props}
       onChange={(event) => {
         if (sanitize === "digits") {
           event.target.value = event.target.value.replace(/\D/g, "");
+        } else if (sanitize === "plate") {
+          event.target.value = event.target.value
+            .replace(/[^A-Za-z0-9]/g, "")
+            .toUpperCase();
         }
         onChange?.(event);
       }}
@@ -341,6 +345,24 @@ describe("Nueva atención page — check-in unificado (B-2)", () => {
     ).toBeInTheDocument();
     expect(mockLookup).not.toHaveBeenCalled();
     expect(mockGetWorkshop).not.toHaveBeenCalled();
+  });
+
+  it("bloquea el lookup si la patente no cumple el formato AAA111 / AA111AA", async () => {
+    const user = userEvent.setup();
+    selectWorkshop("w1");
+
+    renderPage();
+
+    // 3.er dígito → patente nueva AA111AA, pero el 6to carácter es un dígito.
+    await searchPlate(user, "AB1234C");
+
+    expect(
+      await screen.findByText(
+        "La patente debe tener el formato AAA111 o AA111AA.",
+      ),
+    ).toBeInTheDocument();
+    expect(mockLookup).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("vehicle-found")).not.toBeInTheDocument();
   });
 
   it("rama reutilizar: confirma el vehículo y hace check-in por patente", async () => {

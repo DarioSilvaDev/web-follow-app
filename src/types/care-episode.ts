@@ -36,6 +36,8 @@ export type CareEpisodeSource = "workshop" | "owner";
  * propietario"; `verified` → verificado por taller (solo talleres verifican);
  * `rejected` → el taller responsable indicó que el servicio no le corresponde
  * (estado terminal, diseño aprobado de rechazo de verificación).
+ * D-209: el campo es `null` ("verificación no aplica") en episodios
+ * `source='workshop'`; el enum aplica solo a episodios `source='owner'`.
  */
 export type CareEpisodeVerification = "unverified" | "verified" | "rejected";
 
@@ -189,8 +191,10 @@ export interface CareEpisode {
   createdAt: string;
   /** Iteración 2-2 (D-063): `source='owner'` en la ruta `/owner`. */
   source?: CareEpisodeSource;
-  /** Iteración 2-2 (D-064): `verification='unverified'` al nacer. */
-  verification?: CareEpisodeVerification;
+  /** Iteración 2-2 (D-064): `verification='unverified'` al nacer en episodios
+   * `source='owner'`. `null` en episodios `source='workshop'` (D-209: la
+   * verificación no aplica — el taller no se auto-verifica). */
+  verification?: CareEpisodeVerification | null;
   /** Iteración 2-2 (RF-1): requerido en episodios owner. */
   title?: string | null;
   /** Iteración 2-2 (RF-1): requerido en episodios owner (pasada/hoy). */
@@ -384,7 +388,8 @@ export interface CareEpisodeDetail {
   };
   status: "open" | "delivered" | "cancelled";
   source: CareEpisodeSource;
-  verification: CareEpisodeVerification;
+  /** D-209/D-071: `null` en episodios `source='workshop'` (verificación no aplica). */
+  verification: CareEpisodeVerification | null;
   /** Contrato rechazo (aditivo): presente cuando `verification='rejected'`. */
   rejectionReason?: string | null;
   rejectedAt?: string | null;
@@ -452,7 +457,8 @@ export interface CareEpisodeListItem {
   title: string | null;
   status: "open" | "delivered" | "cancelled";
   source: CareEpisodeSource;
-  verification: CareEpisodeVerification;
+  /** D-209/D-071: `null` en episodios `source='workshop'` (verificación no aplica). */
+  verification: CareEpisodeVerification | null;
   /**
    * Fecha canónica D-070 pre-computada por el backend
    * (serviceDate ?? checkedInAt ?? createdAt). Siempre ISO no-null.

@@ -54,12 +54,16 @@ vi.mock("@/components/ui/input", () => ({
     sanitize,
     onChange,
     ...props
-  }: React.ComponentProps<"input"> & { sanitize?: "digits" }) => (
+  }: React.ComponentProps<"input"> & { sanitize?: "digits" | "plate" }) => (
     <input
       {...props}
       onChange={(event) => {
         if (sanitize === "digits") {
           event.target.value = event.target.value.replace(/\D/g, "");
+        } else if (sanitize === "plate") {
+          event.target.value = event.target.value
+            .replace(/[^A-Za-z0-9]/g, "")
+            .toUpperCase();
         }
         onChange?.(event);
       }}

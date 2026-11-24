@@ -366,3 +366,166 @@ export function resolveRevokeUserRoleError(error: unknown): string {
 export function resolveListAdminRolesError(): string {
   return "No se pudieron cargar los roles. Intentá nuevamente.";
 }
+/* ------------------------------------------------------------------ */
+/* Usuarios 360 + membresías (panel superadmin)                        */
+/*                                                                     */
+/* ⚠️ 403 de DEALERSHIPS: el permiso `admin.dealerships.members` existe  */
+/* en el seed del backend pero todavía no fue sincronizado en BD (el     */
+/* usuario no corrió `npm run db:seed`). Hasta entonces estos endpoints  */
+/* responden 403. El mensaje es ACCIONABLE a propósito: no es un error   */
+/* genérico, es una condición de entorno conocida.                       */
+/* ------------------------------------------------------------------ */
+
+/** Mensaje 403 específico del permiso pendiente de seed (dealerships). */
+const DEALERSHIP_MEMBERS_403 =
+  "El backend aún no sincronizó el permiso admin.dealerships.members. Corré `npm run db:seed` en api-follow-app y reintentá.";
+
+function memberPermissionError(entityType: "workshop" | "dealership"): string {
+  return entityType === "dealership"
+    ? DEALERSHIP_MEMBERS_403
+    : "No tenés permisos para gestionar miembros de talleres.";
+}
+
+function memberEntityNoun(entityType: "workshop" | "dealership"): string {
+  return entityType === "dealership" ? "concesionaria" : "taller";
+}
+
+/** Alta de miembro (POST /admin/{workshops|dealerships}/:id/members). */
+export function resolveAddMemberError(
+  error: unknown,
+  entityType: "workshop" | "dealership",
+): string {
+  const status = adminErrorStatus(error);
+
+  if (status === 403) {
+    return memberPermissionError(entityType);
+  }
+  if (status === 404) {
+    return `No se encontró el ${memberEntityNoun(entityType)}, el usuario con ese email o el rol elegido. El usuario debe tener cuenta registrada.`;
+  }
+  if (status === 409) {
+    return `El usuario ya es miembro de este ${memberEntityNoun(entityType)}.`;
+  }
+  if (status === 400) {
+    return "Revisá el email y el rol elegido e intentá nuevamente.";
+  }
+  if (status && status >= 500) {
+    return "Error interno del servidor. Intentá más tarde.";
+  }
+  return "No se pudo asignar. Intentá nuevamente.";
+}
+
+/** Cambio de rol de miembro (PATCH .../members/:memberId/role). */
+export function resolveChangeMemberRoleError(
+  error: unknown,
+  entityType: "workshop" | "dealership",
+): string {
+  const status = adminErrorStatus(error);
+
+  if (status === 403) {
+    return memberPermissionError(entityType);
+  }
+  if (status === 400) {
+    return `El rol no pertenece a este ${memberEntityNoun(entityType)}.`;
+  }
+  if (status === 404) {
+    return "La membresía no existe o está inactiva.";
+  }
+  if (status && status >= 500) {
+    return "Error interno del servidor. Intentá más tarde.";
+  }
+  return "No se pudo cambiar el rol. Intentá nuevamente.";
+}
+
+/** Baja de miembro (DELETE .../members/:memberId). */
+export function resolveRemoveMemberError(
+  error: unknown,
+  entityType: "workshop" | "dealership",
+): string {
+  const status = adminErrorStatus(error);
+
+  if (status === 403) {
+    return memberPermissionError(entityType);
+  }
+  if (status === 404) {
+    return "La membresía no existe o ya está inactiva.";
+  }
+  if (status && status >= 500) {
+    return "Error interno del servidor. Intentá más tarde.";
+  }
+  return "No se pudo quitar al miembro. Intentá nuevamente.";
+}
+
+/** Listado de miembros de la entidad (GET .../members). */
+export function resolveListEntityMembersError(
+  entityType: "workshop" | "dealership",
+): string {
+  if (entityType === "dealership") {
+    return DEALERSHIP_MEMBERS_403;
+  }
+  return "No se pudieron cargar los miembros. Intentá nuevamente.";
+}
+
+/** Listado de roles de la entidad (GET .../roles) usados por el selector. */
+export function resolveListEntityRolesError(
+  entityType: "workshop" | "dealership",
+): string {
+  if (entityType === "dealership") {
+    return DEALERSHIP_MEMBERS_403;
+  }
+  return "No se pudieron cargar los roles. Intentá nuevamente.";
+}
+
+/** Impersonación (POST /admin/users/:id/impersonate). */
+export function resolveImpersonateUserError(error: unknown): string {
+  const status = adminErrorStatus(error);
+
+  if (status === 404) {
+    return "El usuario no existe o no está activo; no se puede navegar como él.";
+  }
+  if (status === 403) {
+    return "No tenés permisos para impersonar usuarios.";
+  }
+  if (status === 429) {
+    return "Demasiados intentos de impersonación. Esperá unos minutos.";
+  }
+  if (status && status >= 500) {
+    return "Error interno del servidor. Intentá más tarde.";
+  }
+  return "No se pudo impersonar al usuario. Intentá nuevamente.";
+}
+
+/** Eliminación (DELETE /admin/users/:id). */
+export function resolveDeleteUserError(error: unknown): string {
+  const status = adminErrorStatus(error);
+
+  if (status === 400) {
+    return "No se puede eliminar este usuario (tu propia cuenta o el último super admin).";
+  }
+  if (status === 403) {
+    return "No tenés permisos para eliminar usuarios, o el objetivo es un super admin.";
+  }
+  if (status === 404) {
+    return "El usuario ya no existe.";
+  }
+  if (status && status >= 500) {
+    return "Error interno del servidor. Intentá más tarde.";
+  }
+  return "No se pudo eliminar el usuario. Intentá nuevamente.";
+}
+
+/** Salida de impersonación (POST /auth/stop-impersonate). */
+export function resolveStopImpersonateError(error: unknown): string {
+  const status = adminErrorStatus(error);
+
+  if (status === 403) {
+    return "La sesión actual no es una impersonación.";
+  }
+  if (status === 404) {
+    return "La sesión de impersonación ya no existe (pudo expirar). Recargá la página.";
+  }
+  if (status && status >= 500) {
+    return "Error interno del servidor. Intentá más tarde.";
+  }
+  return "No se pudo salir de la impersonación. Intentá nuevamente.";
+}

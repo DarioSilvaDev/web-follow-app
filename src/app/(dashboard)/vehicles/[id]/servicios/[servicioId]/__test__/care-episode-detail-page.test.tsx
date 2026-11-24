@@ -161,7 +161,8 @@ function makeDetail(overrides: Partial<CareEpisodeDetail> = {}): CareEpisodeDeta
     },
     status: "open",
     source: "workshop",
-    verification: "unverified",
+    // D-209: episodios de taller llevan `verification: null`.
+    verification: null,
     title: "Cambio de aceite",
     serviceDate: "2026-09-12",
     workshopId: "w1",

@@ -110,14 +110,19 @@ export function VehicleIdentificationFields<T extends FieldValues>({
           id="licensePlate"
           className="bg-card"
           placeholder="Ej. ABC123"
-          maxLength={10}
+          sanitize="plate"
+          maxLength={7}
           autoComplete="off"
           aria-invalid={!!errors.licensePlate}
           {...register("licensePlate" as Path<T>)}
         />
-        {errors.licensePlate && (
+        {errors.licensePlate ? (
           <p className="text-sm text-destructive" role="alert">
             {errors.licensePlate.message as string}
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Formato: AAA111 (vieja) o AA111AA (nueva).
           </p>
         )}
       </div>
