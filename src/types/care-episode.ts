@@ -476,6 +476,12 @@ export interface CareEpisodeListItem {
     brand: string | null;
     model: string | null;
     manufactureYear: number | null;
+    /**
+     * D-213 — campo ADITIVO y OPT-IN: solo se emite con `?signed=true`.
+     * `null` = el vehículo no tiene fotos. Nunca incluye `key` ni la galería.
+     * La URL es una capability temporal: usar solo antes de `expiresAt`.
+     */
+    primaryPhoto?: { url: string; expiresAt: string } | null;
   };
 }
 
