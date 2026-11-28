@@ -2,11 +2,11 @@
  * Dashboard layout header — nav y chip de contexto activo.
  *
  * Ajustado al cambio de navegación/contexto (reemplazo del ContextSelector):
- * - Nav: Inicio · Transferencias · Concesionarias · Talleres ·
+ * - Nav: Inicio · Transferencias · Concesionarias · Mi taller/Talleres ·
  *   Administración · Mi perfil. Sin items de Atenciones (F-023: son quick
  *   actions del dashboard).
- * - "Talleres" solo con `workshopMemberships`; "Concesionarias" solo con
- *   `dealershipMemberships`.
+ * - "Mi taller" con UNA membresía (→ /workshops/<id>); "Talleres" con ≥2
+ *   (→ /workshops). "Concesionarias" solo con `dealershipMemberships`.
  * - El chip de contexto (ContextChip) se renderiza con contexto activo y
  *   no renderiza en PERSONAL.
  */
@@ -105,11 +105,11 @@ function renderLayout() {
 }
 
 describe("Dashboard header nav (nuevo orden, sin Atenciones)", () => {
-  it("con membresía de taller muestra 'Talleres' (→ /workshops) y NUNCA items de atenciones", async () => {
+  it("con UN taller muestra 'Mi taller' (→ /workshops/<id>) y NUNCA items de atenciones", async () => {
     renderLayout();
 
-    const talleres = screen.getByRole("link", { name: "Talleres" });
-    expect(talleres).toHaveAttribute("href", "/workshops");
+    const miTaller = screen.getByRole("link", { name: "Mi taller" });
+    expect(miTaller).toHaveAttribute("href", "/workshops/w1");
 
     // F-023: Atenciones / Nueva atención / Verificaciones NO son items de nav.
     expect(
@@ -120,6 +120,30 @@ describe("Dashboard header nav (nuevo orden, sin Atenciones)", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Verificaciones" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("con VARIOS talleres mantiene 'Talleres' (→ /workshops) como selector", async () => {
+    mockUser = makeUser({
+      workshopMemberships: [
+        {
+          workshopId: "w1",
+          workshop: { id: "w1", name: "Lubricentro Central" },
+          role: "Owner",
+        },
+        {
+          workshopId: "w2",
+          workshop: { id: "w2", name: "Taller Norte" },
+          role: "Owner",
+        },
+      ],
+    });
+    renderLayout();
+
+    const talleres = screen.getByRole("link", { name: "Talleres" });
+    expect(talleres).toHaveAttribute("href", "/workshops");
+    expect(
+      screen.queryByRole("link", { name: "Mi taller" }),
     ).not.toBeInTheDocument();
   });
 
@@ -147,10 +171,9 @@ describe("Dashboard header nav (nuevo orden, sin Atenciones)", () => {
       "href",
       "/profile",
     );
-    expect(screen.getByRole("link", { name: "Transferencias" })).toHaveAttribute(
-      "href",
-      "/transferencias",
-    );
+    expect(
+      screen.getByRole("link", { name: "Transferencias" }),
+    ).toHaveAttribute("href", "/transferencias");
   });
 
   it("con membresía de concesionaria muestra 'Concesionarias' (→ /dealerships)", async () => {
@@ -165,10 +188,9 @@ describe("Dashboard header nav (nuevo orden, sin Atenciones)", () => {
     });
     renderLayout();
 
-    expect(screen.getByRole("link", { name: "Concesionarias" })).toHaveAttribute(
-      "href",
-      "/dealerships",
-    );
+    expect(
+      screen.getByRole("link", { name: "Concesionarias" }),
+    ).toHaveAttribute("href", "/dealerships");
   });
 
   it("marca aria-current='page' en el item activo (/dashboard = Inicio)", async () => {
@@ -218,9 +240,8 @@ describe("Dashboard header — link Transferencias (Fase 1 / D-078)", () => {
     selectWorkshop("w1");
     renderLayout();
 
-    expect(screen.getByRole("link", { name: "Transferencias" })).toHaveAttribute(
-      "href",
-      "/transferencias",
-    );
+    expect(
+      screen.getByRole("link", { name: "Transferencias" }),
+    ).toHaveAttribute("href", "/transferencias");
   });
 });

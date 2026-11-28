@@ -77,7 +77,10 @@ export function DashboardActions({ className }: DashboardActionsProps) {
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
       {primary && (
         <Link href={primary.href}>
-          <Button className="min-h-11 px-5">
+          <Button
+            className="min-h-11 px-5"
+            data-tour="dashboard-nueva-atencion"
+          >
             <primary.icon className="mr-1.5" aria-hidden="true" />
             {primary.label}
           </Button>

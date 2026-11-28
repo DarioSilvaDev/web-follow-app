@@ -105,7 +105,7 @@ export function TraceabilitySummaryCard({
 }: TraceabilitySummaryCardProps) {
   const isLoading = historyStatus === "loading";
   const isError = historyStatus === "error";
-  const episodes = historyStatus === "success" ? careEpisodes ?? [] : [];
+  const episodes = historyStatus === "success" ? (careEpisodes ?? []) : [];
 
   const latestCare = episodes[0];
   const hasCare = episodes.length > 0;
@@ -210,10 +210,10 @@ export function TraceabilitySummaryCard({
     },
   ];
 
-  const careVerified =
-    historyStatus === "success"
-      ? episodes.some((episode) => episode.verification === "verified")
-      : undefined;
+  // const careVerified =
+  //   historyStatus === "success"
+  //     ? episodes.some((episode) => episode.verification === "verified")
+  //     : undefined;
 
   return (
     <Card>
@@ -250,9 +250,7 @@ export function TraceabilitySummaryCard({
             />
             <ChecklistItem
               done={
-                historyStatus === "success"
-                  ? episodes.length > 0
-                  : undefined
+                historyStatus === "success" ? episodes.length > 0 : undefined
               }
               doneLabel="Atención registrada"
               pendingLabel="Falta una atención"
@@ -262,11 +260,11 @@ export function TraceabilitySummaryCard({
               doneLabel="Documentos adjuntos"
               pendingLabel="Falta documentación"
             />
-            <ChecklistItem
+            {/* <ChecklistItem
               done={careVerified}
               doneLabel="Verificación de taller"
               pendingLabel="Falta verificación de taller"
-            />
+            /> */}
           </ul>
         </div>
 
