@@ -130,7 +130,10 @@ export function QrTransferPanel({
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [now, setNow] = useState(Date.now());
+  // Reloj del countdown: se siembra al generar el QR (handleGenerate), dentro
+  // de un handler; así el render no lee Date.now(). Antes de generar no hay QR
+  // y `secondsRemaining` devuelve 0 sin usar este valor.
+  const [now, setNow] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const config =

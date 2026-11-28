@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,12 +54,14 @@ export function RemoveAttachmentDialog({
 }: RemoveAttachmentDialogProps) {
   const [reason, setReason] = useState<RemovalReasonOptions | "">("");
 
-  // Reset al abrir (evita que un motivo previo quede seleccionado).
-  useEffect(() => {
-    if (open) {
-      setReason("");
-    }
-  }, [open]);
+  // Reset al abrir (evita que un motivo previo quede seleccionado). Ajuste de
+  // estado durante el render comparando con el valor anterior de `open`, en
+  // vez de un efecto que dispara un render extra al abrir el diálogo.
+  const [previousOpen, setPreviousOpen] = useState(open);
+  if (open !== previousOpen) {
+    setPreviousOpen(open);
+    if (open) setReason("");
+  }
 
   const submitDisabled =
     isSubmitting || (requiresReason && reason === "");

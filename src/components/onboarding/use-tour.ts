@@ -45,7 +45,6 @@ export function useTour({ steps, onComplete, initialStep = 0 }: UseTourProps) {
   const driverRef = useRef<DriverInstance | null>(null);
   const [isActive, setIsActive] = useState(false);
   const [currentStep, setCurrentStep] = useState(initialStep);
-  const [driverLoaded, setDriverLoaded] = useState(false);
   const onCompleteRef = useRef(onComplete);
   const completedRef = useRef(false);
   const pendingStartRef = useRef(false);
@@ -73,68 +72,6 @@ export function useTour({ steps, onComplete, initialStep = 0 }: UseTourProps) {
     setIsActive(false);
     setCurrentStep(initialStep);
   }, [initialStep]);
-
-  // Carga Driver.js de forma dinámica solo en el client.
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!mounted) return;
-      try {
-        const mod = await import("driver.js");
-        const driverFactory =
-          (mod as { driver?: unknown }).driver ??
-          (mod as { default?: unknown }).default;
-        if (typeof driverFactory !== "function") {
-          console.warn(
-            "use-tour: driver.js no exportó 'driver' ni un default",
-            Object.keys(mod ?? {}),
-          );
-          return;
-        }
-        // driver() es la factory; la llamamos para obtener la instancia.
-        // Pasamos onDestroyStarted para detectar cuando el tour termina o se cierra.
-        const instance = (driverFactory as (config?: unknown) => DriverInstance)({
-          onDestroyed: () => {
-            if (!completedRef.current) {
-              completedRef.current = true;
-              onCompleteRef.current?.();
-            }
-          },
-        });
-        if (!instance || typeof instance.setSteps !== "function") {
-          console.warn("use-tour: la instancia de driver.js no tiene setSteps", Object.keys(instance ?? {}));
-          return;
-        }
-        if (mounted) {
-          driverRef.current = instance;
-          setDriverLoaded(true);
-          // Si había un start pendiente, ejecutarlo ahora.
-          if (pendingStartRef.current) {
-            pendingStartRef.current = false;
-            // Llamar a start en el siguiente tick para asegurar que el estado se actualizó.
-            setTimeout(() => {
-              if (driverRef.current) {
-                startInternal();
-              }
-            }, 0);
-          }
-        }
-      } catch (err) {
-        console.warn("use-tour: error al cargar driver.js", err);
-      }
-    })();
-    return () => {
-      mounted = false;
-      destroy();
-    };
-  }, [destroy]);
-
-  // Si los pasos cambian y el tour está activo, reiniciamos para evitar pasos huérfanos.
-  useEffect(() => {
-    if (driverRef.current && isActive && steps.length === 0) {
-      destroy();
-    }
-  }, [steps.length, isActive, destroy]);
 
   const startInternal = useCallback(() => {
     if (!driverRef.current) return;
@@ -177,6 +114,67 @@ export function useTour({ steps, onComplete, initialStep = 0 }: UseTourProps) {
     setIsActive(true);
     setCurrentStep(0);
   }, []);
+
+  // Carga Driver.js de forma dinámica solo en el client.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!mounted) return;
+      try {
+        const mod = await import("driver.js");
+        const driverFactory =
+          (mod as { driver?: unknown }).driver ??
+          (mod as { default?: unknown }).default;
+        if (typeof driverFactory !== "function") {
+          console.warn(
+            "use-tour: driver.js no exportó 'driver' ni un default",
+            Object.keys(mod ?? {}),
+          );
+          return;
+        }
+        // driver() es la factory; la llamamos para obtener la instancia.
+        // Pasamos onDestroyStarted para detectar cuando el tour termina o se cierra.
+        const instance = (driverFactory as (config?: unknown) => DriverInstance)({
+          onDestroyed: () => {
+            if (!completedRef.current) {
+              completedRef.current = true;
+              onCompleteRef.current?.();
+            }
+          },
+        });
+        if (!instance || typeof instance.setSteps !== "function") {
+          console.warn("use-tour: la instancia de driver.js no tiene setSteps", Object.keys(instance ?? {}));
+          return;
+        }
+        if (mounted) {
+          driverRef.current = instance;
+          // Si había un start pendiente, ejecutarlo ahora.
+          if (pendingStartRef.current) {
+            pendingStartRef.current = false;
+            // Llamar a start en el siguiente tick para asegurar que el estado se actualizó.
+            setTimeout(() => {
+              if (driverRef.current) {
+                startInternal();
+              }
+            }, 0);
+          }
+        }
+      } catch (err) {
+        console.warn("use-tour: error al cargar driver.js", err);
+      }
+    })();
+    return () => {
+      mounted = false;
+      destroy();
+    };
+  }, [destroy, startInternal]);
+
+  // Si los pasos cambian y el tour está activo, reiniciamos para evitar pasos huérfanos.
+  useEffect(() => {
+    if (driverRef.current && isActive && steps.length === 0) {
+      destroy();
+    }
+  }, [steps.length, isActive, destroy]);
 
   const start = useCallback(() => {
     if (!driverRef.current) {
