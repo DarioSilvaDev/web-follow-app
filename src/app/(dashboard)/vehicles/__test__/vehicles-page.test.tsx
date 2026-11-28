@@ -111,7 +111,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <VehiclesPage />
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -245,7 +245,9 @@ describe("Vehicles list page", () => {
     renderPage();
 
     expect(await screen.findByText("ABC123")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /editar/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /editar/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("does NOT show Editar when the owner row belongs to another user", async () => {
@@ -278,7 +280,9 @@ describe("Vehicles list page", () => {
     renderPage();
 
     expect(await screen.findByText("ABC123")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /editar/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /editar/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("navigates to the detail page when the whole card is clicked (F-013)", async () => {
@@ -409,7 +413,7 @@ describe("Vehicles list page — search (F-012)", () => {
 
     // fireEvent is sync (no internal timers) — fake timers only drive the
     // useDebounce setTimeout.
-    fireEvent.change(screen.getByPlaceholderText("Buscar por patente (ej. AAA111 o AA111AA)"), {
+    fireEvent.change(screen.getByPlaceholderText("Ej. AAA111 o AA111AA"), {
       target: { value: "SMK" },
     });
     await settle();
@@ -442,7 +446,7 @@ describe("Vehicles list page — search (F-012)", () => {
     expect(screen.getByText("ABC123")).toBeInTheDocument();
     await settle();
 
-    fireEvent.change(screen.getByPlaceholderText("Buscar por patente (ej. AAA111 o AA111AA)"), {
+    fireEvent.change(screen.getByPlaceholderText("Ej. AAA111 o AA111AA"), {
       target: { value: "SMK" },
     });
     await settle();
@@ -476,7 +480,7 @@ describe("Vehicles list page — search (F-012)", () => {
     await settle();
     expect(screen.getByText("ABC123")).toBeInTheDocument();
 
-fireEvent.change(screen.getByPlaceholderText("Buscar por patente (ej. AAA111 o AA111AA)"), {
+    fireEvent.change(screen.getByPlaceholderText("Ej. AAA111 o AA111AA"), {
       target: { value: "SMK" },
     });
     await settle();

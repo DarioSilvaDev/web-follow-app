@@ -1,0 +1,1081 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototipo · Resumen del taller + onboarding</title>
+<style>
+  :root {
+    --primary: #1d3f6e;
+    --primary-700: #16325a;
+    --primary-foreground: #f8fafc;
+    --success: #15803d;
+    --success-bg: #dcfce7;
+    --accent: #b45309;
+    --accent-bg: #fef3c7;
+    --bg: #f5f7fb;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --muted: #64748b;
+    --muted-bg: #f1f5f9;
+    --text: #0f172a;
+    --radius: 12px;
+    --shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 8px 24px rgba(15, 23, 42, .04);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; cursor: pointer; }
+
+  /* ---------- Shell ---------- */
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 248px;
+    background: linear-gradient(180deg, var(--primary) 0%, var(--primary-700) 100%);
+    color: var(--primary-foreground);
+    display: flex;
+    flex-direction: column;
+    z-index: 20;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 20px 18px 6px;
+  }
+
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: #16a34a;
+    display: grid;
+    place-items: center;
+    flex: none;
+  }
+
+  .brand-mark svg { width: 20px; height: 20px; color: #fff; }
+  .brand-name { font-weight: 700; letter-spacing: -.02em; font-size: 16px; }
+
+  .brand-tagline {
+    padding: 2px 18px 0 64px;
+    font-size: 11px;
+    line-height: 1.25;
+    color: rgba(248, 250, 252, .68);
+  }
+
+  .nav {
+    margin-top: 18px;
+    padding: 0 10px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .nav-section + .nav-section { margin-top: 22px; }
+
+  .nav-title {
+    margin: 0 0 6px;
+    padding: 0 10px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: rgba(248, 250, 252, .62);
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 9px 10px;
+    border-radius: 9px;
+    font-size: 13.5px;
+    color: rgba(248, 250, 252, .82);
+    transition: background .15s ease, color .15s ease;
+  }
+
+  .nav-link:hover { background: rgba(248, 250, 252, .1); color: #fff; }
+
+  .nav-link.active {
+    background: rgba(248, 250, 252, .13);
+    color: #fff;
+    font-weight: 600;
+    position: relative;
+  }
+
+  .nav-link.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 20px;
+    border-radius: 0 4px 4px 0;
+    background: #fff;
+  }
+
+  .nav-icon { width: 17px; height: 17px; flex: none; opacity: .95; }
+
+  .sidebar-footer {
+    border-top: 1px solid rgba(248, 250, 252, .15);
+    padding: 14px 16px 16px;
+  }
+
+  .trust { display: flex; align-items: center; gap: 8px; font-size: 12px; color: rgba(248, 250, 252, .82); }
+  .trust svg { width: 15px; height: 15px; }
+  .trust-sub { margin: 2px 0 0 23px; font-size: 10.5px; color: rgba(248, 250, 252, .62); }
+
+  .account { display: flex; align-items: center; gap: 9px; margin-top: 14px; }
+  .account-avatar {
+    width: 30px; height: 30px; border-radius: 999px;
+    background: rgba(248, 250, 252, .18);
+    display: grid; place-items: center;
+    font-size: 11px; font-weight: 700;
+  }
+  .account-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .account-logout { background: none; border: 0; color: rgba(248, 250, 252, .8); padding: 4px; border-radius: 6px; }
+  .account-logout:hover { background: rgba(248, 250, 252, .12); }
+
+  .main { margin-left: 248px; min-height: 100vh; }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 60px;
+    padding: 0 24px;
+    background: rgba(255, 255, 255, .88);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .breadcrumb { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); min-width: 0; }
+  .breadcrumb strong { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .breadcrumb .sep { opacity: .5; }
+
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+  .context-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 260px;
+    padding: 4px 5px 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--muted-bg);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .context-chip svg { width: 14px; height: 14px; color: var(--muted); flex: none; }
+  .context-chip .chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .context-chip .chip-x {
+    width: 24px; height: 24px; border: 0; border-radius: 999px;
+    background: transparent; color: var(--muted);
+    display: grid; place-items: center;
+  }
+  .context-chip .chip-x:hover { background: rgba(15, 23, 42, .07); }
+
+  .avatar {
+    width: 32px; height: 32px; border-radius: 999px;
+    background: var(--primary); color: #fff;
+    display: grid; place-items: center;
+    font-size: 11px; font-weight: 700;
+  }
+
+  .content { max-width: 1120px; margin: 0 auto; padding: 26px 24px 56px; }
+
+  /* ---------- Workshop header ---------- */
+  .workshop-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 16px;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+
+  .workshop-id { display: flex; align-items: flex-start; gap: 13px; min-width: 0; }
+
+  .workshop-logo {
+    width: 48px; height: 48px; flex: none;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--muted-bg);
+    display: grid; place-items: center;
+    color: var(--primary);
+  }
+  .workshop-logo svg { width: 23px; height: 23px; }
+
+  .workshop-name-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .workshop-name { margin: 0; font-size: 24px; line-height: 1.15; letter-spacing: -.02em; font-weight: 700; }
+
+  .workshop-meta { margin-top: 5px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+  .workshop-meta .dot { opacity: .5; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; line-height: 1.6;
+    border: 1px solid transparent;
+  }
+  .badge.success { background: var(--success-bg); color: var(--success); border-color: #bbf7d0; }
+  .badge.warn { background: var(--accent-bg); color: var(--accent); border-color: #fde68a; }
+  .badge.neutral { background: var(--muted-bg); color: var(--muted); border-color: var(--border); }
+  .badge.outline { background: #fff; color: var(--muted); border-color: var(--border); }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    min-height: 40px; padding: 0 15px;
+    border-radius: 9px; border: 1px solid transparent;
+    font-size: 13px; font-weight: 600;
+    transition: background .15s ease, border-color .15s ease, opacity .15s ease;
+    white-space: nowrap;
+  }
+  .btn svg { width: 15px; height: 15px; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-700); }
+  .btn-outline { background: #fff; border-color: var(--border); color: var(--text); }
+  .btn-outline:hover { background: var(--muted-bg); }
+  .btn-ghost { background: transparent; color: var(--muted); }
+  .btn-ghost:hover { background: var(--muted-bg); color: var(--text); }
+  .btn-sm { min-height: 32px; padding: 0 11px; font-size: 12px; border-radius: 8px; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ---------- KPI ---------- */
+  .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+
+  .kpi {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; box-shadow: var(--shadow);
+  }
+  .kpi-label { font-size: 11.5px; font-weight: 600; letter-spacing: .02em; color: var(--muted); }
+  .kpi-value { margin-top: 6px; display: flex; align-items: baseline; gap: 8px; }
+  .kpi-value strong { font-size: 26px; line-height: 1; letter-spacing: -.02em; }
+  .kpi-value span { font-size: 11.5px; color: var(--muted); }
+
+  /* ---------- Tabs ---------- */
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 18px;
+  }
+  .tab {
+    position: relative;
+    padding: 11px 12px 12px;
+    border: 0; background: none;
+    font-size: 13px; font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--primary); }
+  .tab.active::after {
+    content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px;
+    height: 2px; border-radius: 2px; background: var(--primary);
+  }
+  .tab .tab-dot {
+    display: inline-block; width: 6px; height: 6px; margin-left: 6px;
+    border-radius: 999px; background: var(--accent); vertical-align: middle;
+  }
+
+  .panel[hidden] { display: none; }
+
+  .grid-2 { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .card-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    padding: 15px 16px 0;
+  }
+  .card-title { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
+  .card-sub { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+  .card-body { padding: 14px 16px 16px; }
+
+  /* ---------- Attention list ---------- */
+  .list { display: flex; flex-direction: column; }
+  /* Header y filas comparten EL MISMO template de columnas: con `auto` el
+     ancho lo marcaba el contenido (badge/fecha) y no coincidían. */
+  .list-head, .list-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.35fr) minmax(0, .95fr) minmax(0, .8fr);
+    align-items: center;
+    gap: 10px;
+    padding: 11px 10px;
+    font-size: 12.5px;
+  }
+  .list-head {
+    padding-top: 8px; padding-bottom: 8px;
+    background: var(--muted-bg); border-radius: 8px;
+    color: var(--muted); font-size: 11px; font-weight: 600;
+  }
+  .list-row { border-top: 1px solid var(--border); }
+  .list-row:first-child { border-top: 0; }
+  .plate {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 700; font-size: 12px;
+    letter-spacing: .03em;
+  }
+  /* Miniatura de la foto principal del vehículo (mismo tamaño que en la app). */
+  .plate .thumb {
+    width: 40px; height: 28px; border-radius: 6px; overflow: hidden;
+    background: var(--muted-bg); display: grid; place-items: center; flex: none;
+    color: var(--muted); border: 1px solid var(--border);
+  }
+  .plate .thumb svg { width: 100%; height: 100%; }
+  .thumb.red { color: #b91c1c; background: #fee2e2; }
+  .thumb.silver { color: #64748b; background: #e2e8f0; }
+  .thumb.dark { color: #334155; background: #cbd5e1; }
+  .plate .model { font-family: inherit; font-weight: 400; color: var(--muted); }
+  .service { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .time { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+
+  /* ---------- Checklist ---------- */
+  .checklist-progress { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .checklist-progress .count { font-size: 11.5px; color: var(--muted); }
+  .progress {
+    margin-top: 8px; height: 6px; border-radius: 999px; background: var(--muted-bg); overflow: hidden;
+  }
+  .progress > span {
+    display: block; height: 100%; border-radius: 999px; background: var(--primary);
+    transition: width .3s ease;
+  }
+
+  .checklist { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .check-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+    font-size: 12.5px;
+  }
+  .check-item:first-child { border-top: 0; }
+  .check-icon { width: 17px; height: 17px; flex: none; margin-top: 1px; color: #94a3b8; }
+  .check-item.done .check-icon { color: var(--success); }
+  .check-item.done .check-label { color: var(--muted); }
+  .check-label { font-weight: 600; }
+  .check-hint { display: block; margin-top: 2px; color: var(--muted); font-weight: 400; font-size: 11.5px; line-height: 1.4; }
+  .check-action { margin-left: auto; flex: none; padding-top: 1px; }
+  .link-btn {
+    border: 0; background: none; padding: 2px 0;
+    color: var(--primary); font-size: 11.5px; font-weight: 700;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .link-btn:hover { color: var(--primary-700); }
+
+  .checklist-foot {
+    margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    font-size: 11px; color: var(--muted);
+  }
+
+  /* ---------- Data / branches / specialties ---------- */
+  .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .field label { display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
+  .field .input {
+    width: 100%; min-height: 38px; padding: 8px 11px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: #fff; font-size: 13px; color: var(--text);
+  }
+  .field.full { grid-column: 1 / -1; }
+  .field .input.area { min-height: 74px; resize: vertical; }
+
+  .branch-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .branch {
+    border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px; background: #fff;
+  }
+  .branch-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .branch-name { font-size: 13px; font-weight: 700; }
+  .branch-meta { margin-top: 6px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border-radius: 999px;
+    border: 1px solid var(--border); background: #fff;
+    font-size: 12px; font-weight: 600;
+  }
+  .chip .x { color: var(--muted); font-weight: 400; }
+
+  /* ---------- Tour ---------- */
+  .tour-spotlight {
+    position: fixed;
+    z-index: 900;
+    border-radius: 10px;
+    box-shadow: 0 0 0 9999px rgba(15, 23, 42, .62);
+    pointer-events: none;
+    transition: top .18s ease, left .18s ease, width .18s ease, height .18s ease;
+  }
+  .tour-popover {
+    position: fixed;
+    z-index: 950;
+    width: 320px;
+    max-width: calc(100vw - 24px);
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 18px 50px rgba(15, 23, 42, .28);
+    border: 1px solid var(--border);
+    padding: 15px 16px 13px;
+  }
+  .tour-popover[hidden] { display: none; }
+  .tour-top { display: flex; align-items: flex-start; gap: 8px; }
+  .tour-title { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -.01em; flex: 1; }
+  .tour-close {
+    width: 26px; height: 26px; flex: none; border: 0; border-radius: 7px;
+    background: transparent; color: var(--muted); display: grid; place-items: center;
+  }
+  .tour-close:hover { background: var(--muted-bg); }
+  .tour-body { margin: 7px 0 0; font-size: 12.5px; line-height: 1.55; color: #334155; }
+  .tour-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .tour-step { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .tour-dots { display: flex; gap: 4px; margin-left: 2px; }
+  .tour-dots i { width: 6px; height: 6px; border-radius: 999px; background: var(--border); }
+  .tour-dots i.on { background: var(--primary); }
+  .tour-actions { margin-left: auto; display: flex; gap: 6px; }
+
+  /* ---------- Toast ---------- */
+  .toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(12px);
+    z-index: 1000;
+    background: #0f172a; color: #fff;
+    padding: 10px 14px; border-radius: 9px;
+    font-size: 12.5px; font-weight: 500;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, .28);
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .proto-pill {
+    position: fixed; left: 14px; bottom: 14px; z-index: 30;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px; border-radius: 999px;
+    background: rgba(15, 23, 42, .82); color: #fff;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    backdrop-filter: blur(4px);
+  }
+  .proto-pill i { width: 6px; height: 6px; border-radius: 999px; background: #4ade80; }
+
+  .mobile-only { display: none; }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 960px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; }
+    .mobile-only { display: inline-flex; }
+    .content { padding: 18px 16px 48px; }
+    .grid-2 { grid-template-columns: minmax(0, 1fr); }
+    .kpis { grid-template-columns: minmax(0, 1fr); }
+    .branch-list { grid-template-columns: minmax(0, 1fr); }
+    .form-grid { grid-template-columns: minmax(0, 1fr); }
+    .topbar { padding: 0 14px; }
+    .context-chip { max-width: 150px; }
+    .breadcrumb { display: none; }
+    .list-head { display: none; }
+    .list-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; padding: 11px 4px; }
+    .list-row .service { grid-column: 1 / -1; grid-row: 2; }
+    .list-row .time { grid-column: 2; grid-row: 1; }
+    .tab { padding: 9px 8px 10px; font-size: 12px; }
+    .workshop-name { font-size: 21px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= SIDEBAR ================= -->
+<aside class="sidebar">
+  <div class="brand">
+    <span class="brand-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>
+    </span>
+    <span class="brand-name">Autentia</span>
+  </div>
+  <p class="brand-tagline">Historia Clínica Digital Vehicular</p>
+
+  <nav class="nav" aria-label="Navegación principal">
+    <div class="nav-section">
+      <p class="nav-title">Mi garage</p>
+      <a class="nav-link" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Inicio
+      </a>
+      <a class="nav-link" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M6 17l-1-5 2-4h10l2 4-1 5"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+        Mis vehículos
+      </a>
+      <a class="nav-link active" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z"/></svg>
+        Mi taller
+      </a>
+    </div>
+    <div class="nav-section">
+      <p class="nav-title">Gestión</p>
+      <a class="nav-link" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>
+        Transferencias
+      </a>
+      <a class="nav-link" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+        Mi perfil
+      </a>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <p class="trust">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>
+      Datos protegidos
+    </p>
+    <p class="trust-sub">Registros trazables y seguros</p>
+    <div class="account">
+      <span class="account-avatar">LM</span>
+      <span class="account-name">Lucía Méndez</span>
+      <button class="account-logout" aria-label="Cerrar sesión">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- ================= MAIN ================= -->
+<div class="main">
+  <header class="topbar">
+    <button class="btn btn-ghost btn-sm mobile-only" aria-label="Abrir menú">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <div class="breadcrumb">
+      <span>Mi taller</span><span class="sep">/</span><strong>Taller Los Andes</strong>
+    </div>
+    <div class="topbar-right">
+      <span class="context-chip" title="Taller activo: Los Andes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z"/></svg>
+        <span class="chip-text">Taller: Los Andes</span>
+        <button class="chip-x" aria-label="Volver a contexto personal">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </span>
+      <span class="avatar">LM</span>
+    </div>
+  </header>
+
+  <main class="content">
+    <!-- Workshop header -->
+    <div class="workshop-head">
+      <div class="workshop-id">
+        <div class="workshop-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z"/></svg>
+        </div>
+        <div>
+          <div class="workshop-name-row">
+            <h1 class="workshop-name">Taller Los Andes</h1>
+            <span class="badge success">Activo</span>
+            <span class="badge outline">Dueño</span>
+          </div>
+          <div class="workshop-meta">
+            <span>Los Andes S.R.L.</span><span class="dot">·</span>
+            <span>CUIT 30-71234567-8</span><span class="dot">·</span>
+            <span>2 sucursales</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" data-tour="cta-registrar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z"/></svg>
+          Registrar servicio
+        </button>
+        <button class="btn btn-outline">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l3 3v15H5V3h3z"/><path d="M9 12h6M9 16h6"/></svg>
+          Ver atenciones
+        </button>
+        <button class="btn btn-outline">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l2 2 4-4"/><path d="M5 4h14v16H5z"/></svg>
+          Verificaciones
+        </button>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpis">
+      <div class="kpi">
+        <div class="kpi-label">Atenciones abiertas</div>
+        <div class="kpi-value"><strong>3</strong><span>1 esperando verificación</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Verificaciones pendientes</div>
+        <div class="kpi-value"><strong>2</strong><span>para revisar hoy</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Turnos para hoy</div>
+        <div class="kpi-value"><strong>5</strong><span>próximo 10:30</span></div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs" role="tablist" aria-label="Secciones del taller">
+      <button class="tab active" role="tab" aria-selected="true" data-tab="resumen">Resumen</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="datos">Datos</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="sucursales">Sucursales</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="especialidades" data-tour="tab-especialidades">Especialidades<span class="tab-dot" title="Tenés 1 paso pendiente"></span></button>
+    </div>
+
+    <!-- ============ RESUMEN ============ -->
+    <section class="panel" data-panel="resumen" role="tabpanel">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="card-title">Atenciones recientes</h2>
+              <p class="card-sub">Últimos ingresos registrados en el taller.</p>
+            </div>
+            <button class="link-btn">Ver todas</button>
+          </div>
+          <div class="card-body">
+            <div class="list">
+              <div class="list-head" aria-hidden="true">
+                <span>Vehículo</span><span>Servicio</span><span>Estado</span><span>Fecha</span>
+              </div>
+              <div class="list-row">
+                <span class="plate"><span class="thumb red"><svg viewBox="0 0 48 32"><path fill="currentColor" d="M7 20l3-7c.5-1.2 1.5-1.8 2.8-1.8h21c1.3 0 2.3.6 2.8 1.8l3 7v5a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-5zm5.5-1h23l-2.2-5.2H14.7L12.5 19z"/><circle cx="15" cy="25" r="3" fill="#fff" stroke="currentColor"/><circle cx="33" cy="25" r="3" fill="#fff" stroke="currentColor"/></svg></span><span>Ford Mustang <span class="model">· AB123CD</span></span></span>
+                <span class="service">Cambio de aceite y filtro</span>
+                <span class="badge success">Verificada</span>
+                <span class="time">26 nov, 2026</span>
+              </div>
+              <div class="list-row">
+                <span class="plate"><span class="thumb silver"><svg viewBox="0 0 48 32"><path fill="currentColor" d="M7 20l3-7c.5-1.2 1.5-1.8 2.8-1.8h21c1.3 0 2.3.6 2.8 1.8l3 7v5a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-5zm5.5-1h23l-2.2-5.2H14.7L12.5 19z"/><circle cx="15" cy="25" r="3" fill="#fff" stroke="currentColor"/><circle cx="33" cy="25" r="3" fill="#fff" stroke="currentColor"/></svg></span><span>Toyota Corolla <span class="model">· XYZ789</span></span></span>
+                <span class="service">Revisión de frenos</span>
+                <span class="badge warn">Pendiente</span>
+                <span class="time">24 nov, 2026</span>
+              </div>
+              <div class="list-row">
+                <span class="plate"><span class="thumb dark"><svg viewBox="0 0 48 32"><path fill="currentColor" d="M7 20l3-7c.5-1.2 1.5-1.8 2.8-1.8h21c1.3 0 2.3.6 2.8 1.8l3 7v5a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-5zm5.5-1h23l-2.2-5.2H14.7L12.5 19z"/><circle cx="15" cy="25" r="3" fill="#fff" stroke="currentColor"/><circle cx="33" cy="25" r="3" fill="#fff" stroke="currentColor"/></svg></span><span>Volkswagen Gol <span class="model">· MNO456</span></span></span>
+                <span class="service">Alineación y balanceo</span>
+                <span class="badge neutral">Abierta</span>
+                <span class="time">20 nov, 2026</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Checklist -->
+        <div class="card" id="setup-card">
+          <div class="card-head">
+            <div>
+              <h2 class="card-title">Primeros pasos del taller</h2>
+              <p class="card-sub">Completá estos pasos para operar sin fricción.</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="checklist-progress">
+              <span id="checklist-label" style="font-size:12px;font-weight:600">2 de 5 completados</span>
+              <span class="count" id="checklist-percent">40%</span>
+            </div>
+            <div class="progress"><span id="checklist-bar" style="width:40%"></span></div>
+
+            <ul class="checklist" id="checklist">
+              <li class="check-item done" data-item="datos">
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>
+                <span><span class="check-label">Completar datos del taller</span></span>
+              </li>
+              <li class="check-item done" data-item="sucursal">
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>
+                <span><span class="check-label">Crear una sucursal</span></span>
+              </li>
+              <li class="check-item" data-item="especialidades">
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+                <span>
+                  <span class="check-label">Cargar especialidades</span>
+                  <span class="check-hint">Tus clientes ven qué servicios ofrecés.</span>
+                </span>
+                <span class="check-action"><button class="link-btn" data-tour-start="especialidades">Ver cómo</button></span>
+              </li>
+              <li class="check-item" data-item="atencion">
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+                <span>
+                  <span class="check-label">Registrar la primera atención</span>
+                  <span class="check-hint">Buscá el vehículo por patente y completá el ingreso.</span>
+                </span>
+                <span class="check-action"><button class="link-btn" data-tour-start="atencion">Ver cómo</button></span>
+              </li>
+              <li class="check-item" data-item="equipo">
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+                <span>
+                  <span class="check-label">Invitar al equipo</span>
+                  <span class="check-hint">Sumá recepcionistas y técnicos con su rol.</span>
+                </span>
+                <span class="check-action"><button class="link-btn">Invitar</button></span>
+              </li>
+            </ul>
+
+            <div class="checklist-foot">
+              <span>El checklist es informativo: no bloquea la operación.</span>
+              <button class="link-btn" id="replay-tour">Repetir tour</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DATOS ============ -->
+    <section class="panel" data-panel="datos" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">Datos del taller</h2>
+            <p class="card-sub">Esta información es pública para tus clientes.</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="field"><label>Email</label><input class="input" value="contacto@tallerlosandes.com" /></div>
+            <div class="field"><label>Teléfono</label><input class="input" value="+54 11 4555-1234" /></div>
+            <div class="field"><label>Sitio web</label><input class="input" value="tallerlosandes.com" /></div>
+            <div class="field"><label>Razón social</label><input class="input" value="Los Andes S.R.L." /></div>
+            <div class="field full"><label>Descripción</label><textarea class="input area">Servicio integral de mecánica general, frenos y electricidad.</textarea></div>
+          </div>
+          <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px">
+            <button class="btn btn-outline">Cancelar</button>
+            <button class="btn btn-primary">Guardar cambios</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SUCURSALES ============ -->
+    <section class="panel" data-panel="sucursales" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">Sucursales</h2>
+            <p class="card-sub">Necesitás al menos una sucursal activa para registrar atenciones.</p>
+          </div>
+          <button class="btn btn-primary btn-sm">Nueva sucursal</button>
+        </div>
+        <div class="card-body">
+          <div class="branch-list">
+            <div class="branch">
+              <div class="branch-head">
+                <span class="branch-name">Casa central</span>
+                <span class="badge success">Sede</span>
+              </div>
+              <p class="branch-meta">Av. Rivadavia 1234, CABA<br />+54 11 4555-1234</p>
+            </div>
+            <div class="branch">
+              <div class="branch-head">
+                <span class="branch-name">Sucursal Norte</span>
+                <span class="badge neutral">Activa</span>
+              </div>
+              <p class="branch-meta">Av. Maipú 850, Vicente López<br />+54 11 4799-5678</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ESPECIALIDADES ============ -->
+    <section class="panel" data-panel="especialidades" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">Especialidades</h2>
+            <p class="card-sub">Sin especialidades, el check-in muestra un aviso de onboarding.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" data-tour="btn-nueva-especialidad">Nueva especialidad</button>
+        </div>
+        <div class="card-body">
+          <div class="chips">
+            <span class="chip">Mecánica general <span class="x">×</span></span>
+            <span class="chip">Frenos <span class="x">×</span></span>
+            <span class="chip">Electricidad <span class="x">×</span></span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ================= TOUR ================= -->
+<div class="tour-spotlight" id="tour-spotlight" hidden></div>
+<div class="tour-popover" id="tour-popover" role="dialog" aria-modal="false" aria-labelledby="tour-title" hidden>
+  <div class="tour-top">
+    <h3 class="tour-title" id="tour-title">Título</h3>
+    <button class="tour-close" id="tour-close" aria-label="Cerrar tour">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <p class="tour-body" id="tour-body">Descripción</p>
+  <div class="tour-foot">
+    <span class="tour-step" id="tour-step">Paso 1 de 3</span>
+    <span class="tour-dots" id="tour-dots"><i class="on"></i><i></i><i></i></span>
+    <div class="tour-actions">
+      <button class="btn btn-outline btn-sm" id="tour-prev">Anterior</button>
+      <button class="btn btn-primary btn-sm" id="tour-next">Siguiente</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="proto-pill"><i></i> Prototipo</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- Tabs ---------- */
+  var tabs = Array.prototype.slice.call(document.querySelectorAll("[data-tab]"));
+  var panels = Array.prototype.slice.call(document.querySelectorAll("[data-panel]"));
+
+  function showTab(name) {
+    tabs.forEach(function (tab) {
+      var on = tab.getAttribute("data-tab") === name;
+      tab.classList.toggle("active", on);
+      tab.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    panels.forEach(function (panel) {
+      var on = panel.getAttribute("data-panel") === name;
+      if (on) panel.removeAttribute("hidden");
+      else panel.setAttribute("hidden", "");
+    });
+  }
+
+  tabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      showTab(tab.getAttribute("data-tab"));
+    });
+  });
+
+  /* ---------- Toast ---------- */
+  var toastEl = document.getElementById("toast");
+  var toastTimer = null;
+  function toast(message) {
+    toastEl.textContent = message;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove("show"); }, 2800);
+  }
+
+  /* ---------- Checklist state ---------- */
+  var completed = { datos: true, sucursal: true, especialidades: false, atencion: false, equipo: false };
+  var totalItems = 5;
+
+  function updateChecklist() {
+    var done = Object.keys(completed).filter(function (k) { return completed[k]; }).length;
+    var percent = Math.round((done / totalItems) * 100);
+    document.getElementById("checklist-label").textContent = done + " de " + totalItems + " completados";
+    document.getElementById("checklist-percent").textContent = percent + "%";
+    document.getElementById("checklist-bar").style.width = percent + "%";
+
+    document.querySelectorAll(".check-item").forEach(function (item) {
+      var key = item.getAttribute("data-item");
+      var isDone = !!completed[key];
+      item.classList.toggle("done", isDone);
+      var icon = item.querySelector(".check-icon");
+      if (isDone) {
+        icon.innerHTML = '<circle cx="12" cy="12" r="9"/><path d="M8.5 12l2.5 2.5 4.5-5"/>';
+      } else {
+        icon.innerHTML = '<circle cx="12" cy="12" r="9"/>';
+      }
+      var action = item.querySelector(".check-action");
+      if (action) action.style.visibility = isDone ? "hidden" : "visible";
+    });
+  }
+
+  function completeItem(key) {
+    if (!completed[key]) {
+      completed[key] = true;
+      updateChecklist();
+      toast("¡Bien! Marcamos el paso como completado.");
+    }
+  }
+
+  /* ---------- Tour ---------- */
+  var tourSteps = [
+    {
+      target: '[data-tour="tab-especialidades"]',
+      title: "Cargá las especialidades",
+      body: "Así tus clientes saben qué servicios ofrecés. Sin especialidades, el check-in muestra un aviso de onboarding (no bloquea).",
+      before: function () { showTab("resumen"); }
+    },
+    {
+      target: '[data-tour="btn-nueva-especialidad"]',
+      title: "Agregá tu primera especialidad",
+      body: "Elegí una del catálogo y guardá. Podés sumar todas las que necesites; después las ves en el perfil público del taller.",
+      before: function () { showTab("especialidades"); }
+    },
+    {
+      target: '[data-tour="cta-registrar"]',
+      title: "Registrá tu primera atención",
+      body: "Buscá el vehículo por patente, completá el ingreso y listo. Necesitás al menos una sucursal activa.",
+      before: function () { showTab("resumen"); }
+    }
+  ];
+
+  var spotlight = document.getElementById("tour-spotlight");
+  var popover = document.getElementById("tour-popover");
+  var titleEl = document.getElementById("tour-title");
+  var bodyEl = document.getElementById("tour-body");
+  var stepEl = document.getElementById("tour-step");
+  var dotsEl = document.getElementById("tour-dots");
+  var prevBtn = document.getElementById("tour-prev");
+  var nextBtn = document.getElementById("tour-next");
+  var closeBtn = document.getElementById("tour-close");
+  var current = 0;
+  var isOpen = false;
+  var startedFrom = null;
+
+  function positionTour() {
+    if (!isOpen) return;
+    var step = tourSteps[current];
+    var target = document.querySelector(step.target);
+    if (!target) { closeTour(); return; }
+
+    var rect = target.getBoundingClientRect();
+    var pad = 6;
+    var top = rect.top - pad;
+    var left = rect.left - pad;
+    var width = rect.width + pad * 2;
+    var height = rect.height + pad * 2;
+
+    spotlight.style.top = top + "px";
+    spotlight.style.left = left + "px";
+    spotlight.style.width = width + "px";
+    spotlight.style.height = height + "px";
+
+    var popW = 320;
+    var gap = 12;
+    var popTop = rect.bottom + gap;
+    var popLeft = rect.left;
+    var viewportW = window.innerWidth;
+    var viewportH = window.innerHeight;
+
+    // Si no entra abajo, colocar arriba.
+    var estimatedH = 190;
+    if (popTop + estimatedH > viewportH - 12) {
+      popTop = rect.top - estimatedH - gap;
+    }
+    if (popLeft + popW > viewportW - 12) popLeft = viewportW - popW - 12;
+    if (popLeft < 12) popLeft = 12;
+    if (popTop < 12) popTop = 12;
+
+    popover.style.top = popTop + "px";
+    popover.style.left = popLeft + "px";
+  }
+
+  function renderStep() {
+    var step = tourSteps[current];
+    if (step.before) step.before();
+
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        positionTour();
+        titleEl.textContent = step.title;
+        bodyEl.textContent = step.body;
+        stepEl.textContent = "Paso " + (current + 1) + " de " + tourSteps.length;
+        dotsEl.innerHTML = tourSteps.map(function (_, i) {
+          return '<i class="' + (i === current ? "on" : "") + '"></i>';
+        }).join("");
+        prevBtn.disabled = current === 0;
+        nextBtn.textContent = current === tourSteps.length - 1 ? "Listo" : "Siguiente";
+        popover.removeAttribute("hidden");
+        spotlight.removeAttribute("hidden");
+        nextBtn.focus({ preventScroll: true });
+      });
+    });
+  }
+
+  function startTour(fromKey) {
+    isOpen = true;
+    startedFrom = fromKey || null;
+    // "Ver cómo" en el paso de atención arranca directo en ese paso.
+    current = fromKey === "atencion" ? 2 : 0;
+    renderStep();
+  }
+
+  function closeTour(finished) {
+    if (!isOpen) return;
+    isOpen = false;
+    popover.setAttribute("hidden", "");
+    spotlight.setAttribute("hidden", "");
+    if (finished && startedFrom) {
+      completeItem(startedFrom);
+    }
+  }
+
+  function nextStep() {
+    if (current < tourSteps.length - 1) {
+      current += 1;
+      renderStep();
+    } else {
+      closeTour(true);
+      toast(
+        startedFrom === "atencion"
+          ? "¡Listo! Ya sabés cómo registrar una atención."
+          : "¡Listo! Ya sabés cómo cargar especialidades y registrar una atención."
+      );
+    }
+  }
+
+  function prevStep() {
+    if (current > 0) {
+      current -= 1;
+      renderStep();
+    }
+  }
+
+  document.querySelectorAll("[data-tour-start]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      startTour(btn.getAttribute("data-tour-start"));
+    });
+  });
+
+  document.getElementById("replay-tour").addEventListener("click", function () {
+    startTour("especialidades");
+  });
+
+  nextBtn.addEventListener("click", nextStep);
+  prevBtn.addEventListener("click", prevStep);
+  closeBtn.addEventListener("click", function () { closeTour(false); });
+
+  document.addEventListener("keydown", function (event) {
+    if (!isOpen) return;
+    if (event.key === "Escape") { event.preventDefault(); closeTour(false); }
+    if (event.key === "ArrowRight") { event.preventDefault(); nextStep(); }
+    if (event.key === "ArrowLeft") { event.preventDefault(); prevStep(); }
+  });
+
+  window.addEventListener("resize", positionTour);
+  window.addEventListener("scroll", positionTour, { passive: true });
+
+  updateChecklist();
+})();
+</script>
+</body>
+</html>

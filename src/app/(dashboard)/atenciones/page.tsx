@@ -6,19 +6,19 @@ import { Loader2, Plus, RotateCw, Search, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminTablePagination } from "@/components/admin/admin-table-pagination";
+import { CareEpisodeTable } from "@/components/care-episode/care-episode-table";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PageHeader, PageTitle, BackLink } from "@/components/ui/page-header";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { PageHeader, PageTitle } from "@/components/ui/page-header";
 import { useActiveContext } from "@/hooks/use-active-context";
 import { useAuth } from "@/hooks/use-auth";
 import { useDebounce } from "@/hooks/use-debounce";
 import { careEpisodeApi } from "@/lib/api";
-import { formatDate, formatDateOnly } from "@/lib/format-date";
-import type { CareEpisodeListItem } from "@/types/care-episode";
+import { MEDIA_STALE_TIME } from "@/lib/constants";
+import { formatLicensePlateInput } from "@/lib/license-plate";
 
 // ---------------------------------------------------------------------------
 // F-023 — "Atenciones" (listado del taller, contexto WORKSHOP).
@@ -36,39 +36,6 @@ const PAGE_SIZE = 20;
 const DEBOUNCE_MS = 300;
 const MIN_SEARCH_LENGTH = 2;
 
-/**
- * Fecha canónica del item ya formateada (Plan 05 / F-TZ-5).
- *
- * Dos semánticas: si el backend expone `canonicalDateOnly` (fecha calendario
- * derivada de `serviceDate`) se formatea en UTC; si no (deploy viejo), se cae a
- * `canonicalDate` como instante en hora local. Ya NO se lee `serviceDate` crudo
- * del listado (D-070: el contrato no lo expone) — el fallback era código muerto.
- */
-function episodeDate(item: CareEpisodeListItem): string {
-  return item.canonicalDateOnly
-    ? formatDateOnly(item.canonicalDateOnly)
-    : formatDate(item.canonicalDate);
-}
-
-/** Título con fallback D-071 (copia local de la lógica del timeline). */
-function displayTitle(item: CareEpisodeListItem): string {
-  const baseTitle =
-    item.title ??
-    (item.source === "workshop"
-      ? "Atención de taller"
-      : "Servicio registrado");
-  return item.status === "cancelled" ? `${baseTitle} (cancelada)` : baseTitle;
-}
-
-/** Resumen del vehículo (marca modelo · año) — espejo de verificaciones, sin `version` (RF-4). */
-function vehicleSummary(item: CareEpisodeListItem): string {
-  const catalog = [item.vehicle.brand, item.vehicle.model]
-    .filter(Boolean)
-    .join(" ");
-  const year = item.vehicle.manufactureYear ?? null;
-  return [catalog, year].filter(Boolean).join(" · ") || "Sin datos de catálogo";
-}
-
 export default function AtencionesPage() {
   const activeContext = useActiveContext();
   const workshopId =
@@ -80,8 +47,7 @@ export default function AtencionesPage() {
     (membership) => membership.workshopId === workshopId,
   )?.workshop.name;
 
-  const hasWorkshopMembership =
-    (user?.workshopMemberships?.length ?? 0) > 0;
+  const hasWorkshopMembership = (user?.workshopMemberships?.length ?? 0) > 0;
 
   // Guard de membresía (PO): sin taller no hay journey de atenciones →
   // redirect a /dashboard. UX únicamente — el backend ya enforcea (403
@@ -130,17 +96,22 @@ export default function AtencionesPage() {
         page,
         limit: PAGE_SIZE,
         ...(effectiveQ ? { q: effectiveQ } : {}),
+        // D-213: la tabla comparte con el resumen del taller la miniatura
+        // firmada del vehículo (opt-in, sin request extra por fila).
+        signed: true,
       }),
     enabled: workshopId !== null,
     retry: false,
     placeholderData: keepPreviousData,
+    // Las URLs firmadas vencen en ~1 h: refetch preventivo como en el widget.
+    refetchInterval: MEDIA_STALE_TIME,
   });
 
   // Sin taller seleccionado: WORKSHOP-only por diseño (D-024 A2 / D-035).
   if (workshopId === null) {
     return (
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-        <PageHeader back={<BackLink href="/dashboard">Volver al inicio</BackLink>}>
+        <PageHeader>
           <PageTitle title="Atenciones" />
         </PageHeader>
         <Card>
@@ -163,15 +134,18 @@ export default function AtencionesPage() {
   const showSearchEmptyState = effectiveQ !== "" && items.length === 0;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-      <PageHeader back={<BackLink href="/dashboard">Volver al inicio</BackLink>}>
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+      {/* Sin BackLink: "Inicio" ya está en el drawer mobile y en el sidebar
+          desktop, y además /dashboard NO limpia el contexto WORKSHOP (ver
+          layout del shell), así que el link era redundante y engañoso. */}
+      <PageHeader className="rounded-card bg-secondary/40 p-page md:bg-transparent md:p-0">
         <PageTitle
           title="Atenciones"
           description={`Atenciones registradas por ${workshopName ?? "tu taller"}`}
           actions={
             items.length > 0 || effectiveQ !== "" ? (
-              <Link href="/atenciones/nueva">
-                <Button className="min-h-11 px-5">
+              <Link href="/atenciones/nueva" className="w-full sm:w-auto">
+                <Button className="min-h-11 w-full justify-center px-5">
                   <Plus className="mr-1.5" aria-hidden="true" />
                   Registrar servicio
                 </Button>
@@ -181,9 +155,11 @@ export default function AtencionesPage() {
         />
       </PageHeader>
 
-      {/* Búsqueda por patente (D-F023-1a) — mismo patrón que /vehicles:
-          input controlado + debounce, label sr-only, botón X para limpiar
-          y Escape. Full-width en mobile, max-w-md en desktop. */}
+      {/* Búsqueda por patente (D-F023-1a): input controlado + debounce, label
+          sr-only y UN solo botón X para limpiar (se oculta el nativo que el
+          navegador agrega a type="search"). La patente se formatea mientras se
+          escribe con la misma regla de registro: 2 letras obligatorias y el
+          3.er carácter define AAA111 (letra) o AA111AA (dígito). */}
       <div className="flex w-full max-w-md flex-col gap-2">
         <Label htmlFor="care-episode-search" className="sr-only">
           Buscar por patente
@@ -197,15 +173,22 @@ export default function AtencionesPage() {
             id="care-episode-search"
             type="search"
             value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
+            onChange={(e) =>
+              setSearchInput(formatLicensePlateInput(e.target.value))
+            }
             onKeyDown={(e) => {
               if (e.key === "Escape") setSearchInput("");
             }}
-            placeholder="Buscar por patente (ej. AAA111 o AA111AA)"
-            maxLength={20}
-            aria-describedby="care-episode-search-hint"
-            className="h-11 rounded-xl border-input bg-card pl-11 pr-12 text-base focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-12"
+            placeholder="Ej. AAA111 o AA111AA"
+            maxLength={7}
+            className="h-11 rounded-xl border-input bg-card pl-11 pr-12 text-base focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-cancel-button]:appearance-none sm:h-12"
           />
+          {listQuery.isFetching && effectiveQ !== "" && (
+            <Loader2
+              className="absolute right-12 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground motion-reduce:animate-none"
+              aria-label="Buscando…"
+            />
+          )}
           {searchInput && (
             <Button
               type="button"
@@ -218,17 +201,6 @@ export default function AtencionesPage() {
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </Button>
-          )}
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <p id="care-episode-search-hint" className="text-xs text-muted-foreground">
-            Patente vieja AAA111 · patente nueva AA111AA
-          </p>
-          {listQuery.isFetching && effectiveQ !== "" && (
-            <Loader2
-              className="h-4 w-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none"
-              aria-label="Buscando…"
-            />
           )}
         </div>
       </div>
@@ -277,10 +249,7 @@ export default function AtencionesPage() {
                 title="No se encontraron atenciones con esa patente"
                 description={`No hay atenciones que coincidan con «${effectiveQ}». Probá con otra patente o limpiá la búsqueda.`}
                 action={
-                  <Button
-                    variant="outline"
-                    onClick={() => setSearchInput("")}
-                  >
+                  <Button variant="outline" onClick={() => setSearchInput("")}>
                     <X className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                     Limpiar búsqueda
                   </Button>
@@ -289,74 +258,28 @@ export default function AtencionesPage() {
             </CardContent>
           </Card>
         ) : (
-        <Card>
-          <CardContent>
-            <EmptyState
-              icon={Wrench}
-              title="Todavía no hay atenciones registradas"
-              description="Cuando ingreses un vehículo o verifiques un servicio del propietario, vas a verlo acá."
-              action={
-                <Link href="/atenciones/nueva" className={buttonVariants()}>
-                  Registrar servicio
-                </Link>
-              }
-            />
-          </CardContent>
-        </Card>
+          <Card>
+            <CardContent>
+              <EmptyState
+                icon={Wrench}
+                title="Todavía no hay atenciones registradas"
+                description="Cuando ingreses un vehículo o verifiques un servicio del propietario, vas a verlo acá."
+                action={
+                  <Link href="/atenciones/nueva" className={buttonVariants()}>
+                    Registrar servicio
+                  </Link>
+                }
+              />
+            </CardContent>
+          </Card>
         )
       ) : (
         <>
-          <ul className="flex flex-col gap-4" aria-busy={listQuery.isFetching}>
-            {items.map((item) => {
-              return (
-                <li key={item.id}>
-                  <Link
-                    href={`/vehicles/${item.vehicleId}/servicios/${item.id}`}
-                    className="block rounded-card outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <Card className="transition-colors hover:bg-muted/40 hover:ring-primary/40">
-                      <CardContent className="grid gap-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold">
-                            {displayTitle(item)}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <StatusBadge status={item.status} />
-                            {item.source === "owner" && (
-                              <StatusBadge
-                                status={
-                                  item.verification === "rejected"
-                                    ? "rejected"
-                                    : item.verification === "verified"
-                                      ? "verified"
-                                      : "unverified"
-                                }
-                              />
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="grid gap-1 text-sm">
-                          <p className="text-muted-foreground">
-                            {episodeDate(item)}
-                            {item.mileageIn != null
-                              ? ` · ${item.mileageIn.toLocaleString("es-AR")} km`
-                              : ""}
-                          </p>
-                          <p className="font-medium">
-                            {item.vehicle.licensePlate}{" "}
-                            <span className="text-muted-foreground">
-                              ({vehicleSummary(item)})
-                            </span>
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          <CareEpisodeTable
+            items={items}
+            showDetails
+            isFetching={listQuery.isFetching}
+          />
 
           {meta && meta.totalPages > 1 && (
             <Card className="py-0">
@@ -374,5 +297,3 @@ export default function AtencionesPage() {
     </div>
   );
 }
-
-

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -1041,7 +1041,10 @@ export default function NewCareEpisodePage() {
     queryFn: () => workshopApi.getWorkshop(workshopId!),
     enabled: workshopId !== null,
   });
-  const branches = workshopQuery.data?.branches ?? [];
+  const branches = useMemo(
+    () => workshopQuery.data?.branches ?? [],
+    [workshopQuery.data?.branches],
+  );
   const branchesLoading = workshopId !== null && workshopQuery.isLoading;
 
   // ── Tipos de atención (GET /care-episodes/service-types) ──────────────────

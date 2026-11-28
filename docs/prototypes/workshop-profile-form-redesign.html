@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototipo · Datos del taller (rediseño UX)</title>
+<style>
+  :root {
+    --primary: #1d3f6e;
+    --primary-700: #16325a;
+    --primary-foreground: #f8fafc;
+    --success: #15803d;
+    --success-bg: #dcfce7;
+    --warning: #b45309;
+    --warning-bg: #fef3c7;
+    --danger: #b91c1c;
+    --danger-bg: #fee2e2;
+    --info: #1d4ed8;
+    --info-bg: #dbeafe;
+    --bg: #f5f7fb;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --border-strong: #cbd5e1;
+    --muted: #64748b;
+    --muted-bg: #f1f5f9;
+    --text: #0f172a;
+    --radius: 12px;
+    --shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 8px 24px rgba(15, 23, 42, .05);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button { font: inherit; cursor: pointer; }
+
+  .page { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+
+  .crumb {
+    font-size: 12px; color: var(--muted); margin-bottom: 10px;
+  }
+  .crumb span { color: var(--border-strong); margin: 0 6px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .card-header {
+    display: flex; flex-wrap: wrap; align-items: flex-start;
+    justify-content: space-between; gap: 12px;
+    padding: 22px 24px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-header h1 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
+  .card-header p { margin: 5px 0 0; font-size: 13px; color: var(--muted); }
+
+  .tutorial {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border); background: #fff; color: var(--primary);
+    border-radius: 8px; padding: 7px 11px; font-size: 12px; font-weight: 600;
+    white-space: nowrap;
+  }
+  .tutorial:hover { background: var(--muted-bg); }
+
+  .card-body { padding: 22px 24px 24px; }
+
+  .callout {
+    display: flex; align-items: flex-start; gap: 8px;
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; font-weight: 500;
+    margin-bottom: 20px; border: 1px solid transparent;
+  }
+  .callout.success { background: var(--success-bg); border-color: var(--success); color: var(--text); }
+  .callout.success b { color: var(--success); }
+  .callout[hidden] { display: none; }
+
+  fieldset.section { border: 0; margin: 0; padding: 0 0 22px; }
+  fieldset.section + fieldset.section {
+    padding-top: 20px; border-top: 1px dashed var(--border);
+  }
+
+  .section-head { margin-bottom: 14px; }
+  .section-head h2 {
+    margin: 0; font-size: 13px; font-weight: 700; color: var(--primary);
+    letter-spacing: .02em; text-transform: uppercase;
+  }
+  .section-head p { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 18px; }
+  .grid .full { grid-column: 1 / -1; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .field label { font-size: 13px; font-weight: 600; }
+  .field label .req { color: var(--danger); }
+  .field .optional {
+    font-size: 11px; font-weight: 500; color: var(--muted);
+    background: var(--muted-bg); border-radius: 4px; padding: 1px 5px; margin-left: 4px;
+  }
+
+  .input, .textarea {
+    width: 100%; border: 1px solid var(--border-strong); border-radius: 8px;
+    padding: 9px 11px; font: inherit; font-size: 13px; color: var(--text);
+    background: #fff; transition: border-color .15s, box-shadow .15s;
+  }
+  .input:focus, .textarea:focus {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(29, 63, 110, .12);
+  }
+  .input[aria-invalid="true"], .textarea[aria-invalid="true"] {
+    border-color: var(--danger); box-shadow: 0 0 0 3px rgba(185, 28, 28, .1);
+  }
+  .textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
+  .input::placeholder, .textarea::placeholder { color: #94a3b8; }
+
+  .hint { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+  .error {
+    font-size: 11.5px; color: var(--danger); font-weight: 600;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .error[hidden] { display: none; }
+
+  .counter-row { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .counter { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .counter.near { color: var(--warning); font-weight: 600; }
+
+  .footer {
+    display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: 12px;
+    padding-top: 18px; border-top: 1px solid var(--border);
+  }
+  .state { display: flex; align-items: center; gap: 10px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; border-radius: 999px;
+    padding: 4px 10px; background: var(--muted-bg); color: var(--muted);
+  }
+  .pill.dirty { background: var(--warning-bg); color: var(--warning); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .ghost {
+    border: 0; background: transparent; color: var(--muted);
+    font-size: 12px; text-decoration: underline; padding: 4px 2px;
+  }
+  .ghost:hover { color: var(--text); }
+  .ghost:disabled { opacity: .45; cursor: not-allowed; text-decoration: none; }
+
+  .primary {
+    border: 0; background: var(--primary); color: var(--primary-foreground);
+    border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 700;
+  }
+  .primary:hover:not(:disabled) { background: var(--primary-700); }
+  .primary:disabled { background: var(--border-strong); color: #f8fafc; cursor: not-allowed; }
+
+  .notes {
+    margin-top: 20px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--card); padding: 4px 18px;
+  }
+  .notes summary { cursor: pointer; font-size: 13px; font-weight: 700; padding: 12px 0; }
+  .notes ol { margin: 0 0 14px; padding-left: 20px; }
+  .notes li { font-size: 12.5px; color: var(--muted); line-height: 1.55; padding: 2px 0; }
+  .notes b { color: var(--text); }
+
+  @media (max-width: 620px) {
+    .page { padding: 18px 12px 40px; }
+    .card-header, .card-body { padding-left: 16px; padding-right: 16px; }
+    .grid { grid-template-columns: 1fr; gap: 14px; }
+    .footer { align-items: stretch; }
+    .primary { width: 100%; }
+    .state { justify-content: space-between; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="crumb">Talleres <span>/</span> Mi taller <span>/</span> Datos</div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h1>Datos del taller</h1>
+        <p>Mantené actualizada la información de tu taller.</p>
+      </div>
+      <button class="tutorial" type="button">▶ Ver tutorial: completar perfil</button>
+    </div>
+
+    <div class="card-body">
+      <div class="callout success" id="success" role="status" hidden>
+        <b>✓</b> Los datos del taller se actualizaron.
+      </div>
+
+      <form id="form" novalidate>
+        <fieldset class="section">
+          <div class="section-head">
+            <h2>Identidad</h2>
+            <p>Cómo se identifica tu taller.</p>
+          </div>
+          <div class="grid">
+            <div class="field">
+              <label for="name">Nombre <span class="req">*</span></label>
+              <input class="input" id="name" type="text" value="Lo de Darío" />
+              <span class="error" id="name-error" role="alert" hidden>Ingresá el nombre del taller.</span>
+            </div>
+
+            <div class="field">
+              <label for="legal">Razón social <span class="optional">Opcional</span></label>
+              <input class="input" id="legal" type="text" value="Dario Silva" />
+            </div>
+
+            <div class="field full">
+              <label for="cuit">CUIT <span class="optional">Opcional</span></label>
+              <input class="input" id="cuit" type="text" inputmode="numeric"
+                     placeholder="30-12345678-9" value="20-33722435-1"
+                     aria-describedby="cuit-hint cuit-error" />
+              <span class="hint" id="cuit-hint">11 dígitos, con o sin guiones. Validamos el formato, no la situación fiscal.</span>
+              <span class="error" id="cuit-error" role="alert" hidden>El CUIT no es válido. Revisá los 11 dígitos.</span>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="section">
+          <div class="section-head">
+            <h2>Contacto</h2>
+            <p>Cómo pueden comunicarse con el taller.</p>
+          </div>
+          <div class="grid">
+            <div class="field">
+              <label for="email">Email <span class="optional">Opcional</span></label>
+              <input class="input" id="email" type="email" autocomplete="email"
+                     value="darioemmanuel Silva-arentia-test@gmail.com" />
+              <span class="error" id="email-error" role="alert" hidden>Ingresá un email válido.</span>
+            </div>
+
+            <div class="field">
+              <label for="phone">Teléfono <span class="optional">Opcional</span></label>
+              <input class="input" id="phone" type="tel" autocomplete="tel"
+                     value="+543364687486" />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="section">
+          <div class="section-head">
+            <h2>Presencia online</h2>
+            <p>Sitio web y descripción del taller.</p>
+          </div>
+          <div class="grid">
+            <div class="field">
+              <label for="web">Sitio web <span class="optional">Opcional</span></label>
+              <input class="input" id="web" type="text" placeholder="ej. mitaller.com.ar" />
+            </div>
+
+            <div class="field full">
+              <div class="counter-row">
+                <label for="desc">Descripción <span class="optional">Opcional</span></label>
+                <span class="counter" id="counter">0 / 200</span>
+              </div>
+              <textarea class="textarea" id="desc" maxlength="200"
+                        placeholder="Contá qué hace el taller. Tus clientes lo ven.">Somos los mejores en mecanica general. Trabajamos con vehículos a combustion, híbridos y eléctricos</textarea>
+              <span class="hint">Estos datos son públicos: los ven tus clientes.</span>
+              <span class="error" id="desc-error" role="alert" hidden>La descripción no puede superar los 200 caracteres.</span>
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="footer">
+          <div class="state">
+            <span class="pill" id="state"><span class="dot"></span> Sin cambios</span>
+            <button class="ghost" id="discard" type="button" disabled>Descartar cambios</button>
+          </div>
+          <button class="primary" id="save" type="submit" disabled>Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <details class="notes">
+    <summary>Qué cambió respecto del formulario actual</summary>
+    <ol>
+      <li><b>Agrupación en 3 secciones</b> (Identidad / Contacto / Presencia online) con título y texto de apoyo: el ojo encuentra primero la información, no 7 inputs sueltos.</li>
+      <li><b>Jerarquía explícita</b>: obligatorio con asterisco rojo; opcional con etiqueta gris, para no dejar al usuario adivinando qué puede dejar vacío.</li>
+      <li><b>Ayudas contextuales</b>: CUIT con formato y aclaración honesta sobre la validación; descripción con contador <b>0 / 200</b> que avisa al acercarse al límite.</li>
+      <li><b>Validación inline</b>: el error aparece al salir del campo (blur), no mientras se escribe, y se asocia al input con <code>aria-describedby</code>.</li>
+      <li><b>Estado de guardado visible</b>: “Sin cambios / Cambios sin guardar” + botón <b>Descartar cambios</b>; Guardar queda deshabilitado cuando no hay nada nuevo.</li>
+      <li><b>Mobile first</b>: una columna en pantallas angudos, botones de ancho completo y targets táctiles cómodos.</li>
+      <li><b>Reutilización</b>: secciones con <code>SectionHeader</code>, campos con un <code>FormField</code> común y esquemas zod compartidos — sin crear un “formulario genérico” que mezcle contratos distintos.</li>
+    </ol>
+  </details>
+</main>
+
+<script>
+  const form = document.getElementById("form");
+  const fields = ["name", "legal", "cuit", "email", "phone", "web", "desc"]
+    .map((id) => document.getElementById(id));
+  const initial = Object.fromEntries(fields.map((el) => [el.id, el.value]));
+  const save = document.getElementById("save");
+  const discard = document.getElementById("discard");
+  const state = document.getElementById("state");
+  const success = document.getElementById("success");
+  const counter = document.getElementById("counter");
+  const desc = document.getElementById("desc");
+
+  function refreshState() {
+    const dirty = fields.some((el) => el.value !== initial[el.id]);
+    state.className = "pill" + (dirty ? " dirty" : "");
+    state.innerHTML = '<span class="dot"></span> ' + (dirty ? "Cambios sin guardar" : "Sin cambios");
+    save.disabled = !dirty;
+    discard.disabled = !dirty;
+  }
+
+  function refreshCounter() {
+    const n = desc.value.length;
+    counter.textContent = n + " / 200";
+    counter.className = "counter" + (n >= 180 ? " near" : "");
+  }
+
+  fields.forEach((el) => {
+    el.addEventListener("input", () => {
+      refreshState();
+      if (el.id === "desc") refreshCounter();
+    });
+  });
+
+  const cuit = document.getElementById("cuit");
+  cuit.addEventListener("input", () => {
+    const digits = cuit.value.replace(/\D/g, "");
+    if (digits.length === 11) {
+      cuit.value = digits.slice(0, 2) + "-" + digits.slice(2, 10) + "-" + digits.slice(10);
+    }
+  });
+  cuit.addEventListener("blur", () => {
+    const digits = cuit.value.replace(/\D/g, "");
+    document.getElementById("cuit-error").hidden = cuit.value !== "" && digits.length !== 11;
+  });
+
+  const email = document.getElementById("email");
+  email.addEventListener("blur", () => {
+    const ok = email.value === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value);
+    document.getElementById("email-error").hidden = ok;
+  });
+
+  discard.addEventListener("click", () => {
+    if (!window.confirm("¿Descartar los cambios sin guardar?")) return;
+    fields.forEach((el) => { el.value = initial[el.id]; });
+    document.querySelectorAll(".error").forEach((el) => { el.hidden = true; });
+    refreshCounter();
+    refreshState();
+  });
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    fields.forEach((el) => { initial[el.id] = el.value; });
+    refreshState();
+    success.hidden = false;
+    window.setTimeout(() => { success.hidden = true; }, 4000);
+  });
+
+  refreshCounter();
+  refreshState();
+</script>
+</body>
+</html>

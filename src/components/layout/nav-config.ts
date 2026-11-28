@@ -48,8 +48,16 @@ export interface NavSection {
 
 /** Membresías/permisos de la sesión que habilitan items del nav. */
 export interface NavVisibility {
-  /** Hay membresía activa de taller → item "Talleres". */
+  /** Hay membresía activa de taller → item "Mi taller"/"Talleres". */
   hasWorkshops: boolean;
+  /**
+   * Id del taller cuando el usuario tiene EXACTAMENTE una membresía activa.
+   *
+   * Con un solo taller no tiene sentido pasar por la lista: el item apunta
+   * directo a `/workshops/<id>` (label "Mi taller"). Con 0 o ≥2 membresías se
+   * mantiene `/workshops` (label "Talleres") como selector.
+   */
+  singleWorkshopId?: string | null;
   /** Hay membresía de concesionaria → item "Concesionarias". */
   hasDealerships: boolean;
   /** Acceso de admin de workspace → item "Administración". */
@@ -62,6 +70,7 @@ export interface NavVisibility {
  */
 export function buildNavSections({
   hasWorkshops,
+  singleWorkshopId,
   hasDealerships,
   isAdmin,
 }: NavVisibility): NavSection[] {
@@ -71,10 +80,22 @@ export function buildNavSections({
   ];
 
   if (hasWorkshops) {
-    garage.push({ href: "/workshops", label: "Talleres", icon: Wrench });
+    // Un solo taller ⇒ acceso directo (sin hop por la lista). Varios ⇒ la
+    // lista sigue siendo el selector. La membresía NO define el contexto: la
+    // ruta `/workshops/<id>` lo activa vía `useRouteDerivedContext` (D-021).
+    const singleId = singleWorkshopId?.trim();
+    garage.push(
+      singleId
+        ? { href: `/workshops/${singleId}`, label: "Mi taller", icon: Wrench }
+        : { href: "/workshops", label: "Talleres", icon: Wrench },
+    );
   }
   if (hasDealerships) {
-    garage.push({ href: "/dealerships", label: "Concesionarias", icon: Building2 });
+    garage.push({
+      href: "/dealerships",
+      label: "Concesionarias",
+      icon: Building2,
+    });
   }
 
   const gestion: NavItem[] = [
@@ -85,7 +106,12 @@ export function buildNavSections({
     gestion.push({ href: "/admin", label: "Administración", icon: Shield });
   }
 
-  gestion.push({ href: "/profile", label: "Mi perfil", icon: User, exact: true });
+  gestion.push({
+    href: "/profile",
+    label: "Mi perfil",
+    icon: User,
+    exact: true,
+  });
 
   return [
     { title: "Mi garage", items: garage },

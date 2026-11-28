@@ -54,6 +54,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { workshopApi } from "@/lib/api";
+import { TourLauncher } from "@/components/onboarding/tour-launcher";
 import { canInWorkshop } from "@/lib/admin-access";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -212,6 +213,9 @@ export function WorkshopSpecialtiesSection({
 
   return (
     <div className="flex flex-col gap-5">
+      <div className="flex justify-end">
+        <TourLauncher tourId="specialty" label="Ver tutorial: Cargar especialidad" />
+      </div>
       {isLoadingList && (
         <p
           role="status"
@@ -246,7 +250,11 @@ export function WorkshopSpecialtiesSection({
           description="Sin especialidades, el check-in muestra todos los tipos de atención. Cargá las que trabaja tu taller para que el catálogo quede filtrado."
           action={
             canManage ? (
-              <Button type="button" onClick={openPicker}>
+              <Button
+                type="button"
+                onClick={openPicker}
+                data-tour="workshop-btn-nueva-especialidad"
+              >
                 Agregar la primera especialidad
               </Button>
             ) : undefined
@@ -289,7 +297,12 @@ export function WorkshopSpecialtiesSection({
 
       {showList && specialties.length > 0 && canManage && !showPicker && (
         <div>
-          <Button type="button" variant="outline" onClick={openPicker}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={openPicker}
+            data-tour="workshop-btn-nueva-especialidad"
+          >
             <Plus className="mr-1" aria-hidden="true" />
             Añadir especialidad
           </Button>
@@ -369,6 +382,7 @@ export function WorkshopSpecialtiesSection({
             ) : (
               <div
                 role="group"
+                data-tour="workshop-select-especialidad"
                 aria-label="Especialidades disponibles"
                 className="flex flex-wrap gap-2"
               >
@@ -408,7 +422,10 @@ export function WorkshopSpecialtiesSection({
               onClick={handleAdd}
             >
               {isSaving && (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                <Loader2
+                  className="h-3.5 w-3.5 animate-spin"
+                  aria-hidden="true"
+                />
               )}
               {isSaving
                 ? "Agregando…"

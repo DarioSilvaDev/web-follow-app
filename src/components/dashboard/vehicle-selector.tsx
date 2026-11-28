@@ -127,6 +127,7 @@ export function VehicleSelector({
       <button
         ref={triggerRef}
         type="button"
+        data-tour="dashboard-vehicle-selector"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls="vehicle-selector-list"

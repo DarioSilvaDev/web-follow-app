@@ -71,7 +71,7 @@ function formatCooldownDate(value: string | null): string | null {
 function AliasCard() {
   const queryClient = useQueryClient();
   const { refreshSession } = useAuth();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, dataUpdatedAt } = useQuery({
     queryKey: ["my-alias"],
     queryFn: () => usersApi.getMyAlias(),
   });
@@ -134,9 +134,12 @@ function AliasCard() {
   // alias existente como tras una eliminación (null solo en alta inicial). El
   // cooldown bloquea cambiar, guardar y eliminar; el 409 sigue siendo el
   // enforcement real server-side.
+  // `dataUpdatedAt` es el instante en que TanStack Query obtuvo esta respuesta:
+  // evita leer `Date.now()` durante el render y mantiene la comparación estable
+  // entre re-renders (el query refetcha al montar, staleTime por defecto 0).
   const inCooldown = Boolean(
     data?.nextChangeAllowedAt &&
-    new Date(data.nextChangeAllowedAt).getTime() > Date.now(),
+    new Date(data.nextChangeAllowedAt).getTime() > dataUpdatedAt,
   );
 
   return (

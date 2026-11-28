@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -87,7 +87,10 @@ export default function EditVehiclePage() {
   }, [banner]);
 
   // RF-5: once the prefilled catalog cascade is resolved, user edits take over.
-  const prefillDoneRef = useRef(false);
+  // Estado (no ref) para ajustar la selección durante el render, patrón
+  // "storing information from previous renders" de React (sin efecto que
+  // dispare renders en cascada).
+  const [prefillDone, setPrefillDone] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Pre-carga (RF-5): GET /api/vehicles/:id → VehicleResponseDto desnormalizado.
@@ -137,31 +140,38 @@ export default function EditVehiclePage() {
   // ---------------------------------------------------------------------------
   const vehicle = vehicleQuery.data;
 
-  useEffect(() => {
-    if (!vehicle || prefillDoneRef.current) return;
+  if (!prefillDone && vehicle && !vehicle.brand && !vehicle.model) {
     // Sin catálogo → no hay nada que preseleccionar (D-038).
-    if (!vehicle.brand && !vehicle.model) {
-      prefillDoneRef.current = true;
-      return;
-    }
-    if (!selectedBrandId && brandsQuery.data) {
-      const brand = brandsQuery.data.find(
-        (b) => b.name.toLowerCase() === vehicle.brand?.toLowerCase(),
-      );
-      if (brand) setSelectedBrandId(brand.id);
-      else prefillDoneRef.current = true; // el catálogo ya no matchea
-    }
-  }, [vehicle, brandsQuery.data, selectedBrandId]);
+    setPrefillDone(true);
+  }
 
-  useEffect(() => {
-    if (!vehicle || prefillDoneRef.current) return;
-    if (!selectedBrandId || selectedModelId || !modelsQuery.data) return;
+  if (
+    !prefillDone &&
+    vehicle &&
+    (vehicle.brand || vehicle.model) &&
+    !selectedBrandId &&
+    brandsQuery.data
+  ) {
+    const brand = brandsQuery.data.find(
+      (b) => b.name.toLowerCase() === vehicle.brand?.toLowerCase(),
+    );
+    if (brand) setSelectedBrandId(brand.id);
+    else setPrefillDone(true); // el catálogo ya no matchea
+  }
+
+  if (
+    !prefillDone &&
+    vehicle &&
+    selectedBrandId &&
+    !selectedModelId &&
+    modelsQuery.data
+  ) {
     const model = modelsQuery.data.find(
       (m) => m.name.toLowerCase() === vehicle.model?.toLowerCase(),
     );
     if (model) setSelectedModelId(model.id);
-    prefillDoneRef.current = true;
-  }, [vehicle, selectedBrandId, modelsQuery.data, selectedModelId]);
+    setPrefillDone(true);
+  }
 
   const handleBrandChange = (value: string) => {
     setSelectedBrandId(value);
