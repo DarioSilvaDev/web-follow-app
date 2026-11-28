@@ -164,11 +164,18 @@ export default function TransferQrAcceptPage() {
   const started = useRef(false);
 
   // Pre-select the active DEALERSHIP context when the page opens (take flow).
-  useEffect(() => {
-    if (activeContext?.type === "DEALERSHIP") {
-      setDealershipId(activeContext.dealershipId);
-    }
-  }, [activeContext]);
+  // El contexto se hidrata desde sessionStorage DESPUÉS del primer render, así
+  // que se aplica durante el render cuando cambia el id (patrón React de
+  // ajustar estado a partir de props/estado externo, sin efecto en cascada).
+  const activeDealershipId =
+    activeContext?.type === "DEALERSHIP" ? activeContext.dealershipId : null;
+  const [lastAppliedDealershipId, setLastAppliedDealershipId] = useState<
+    string | null
+  >(null);
+  if (activeDealershipId && activeDealershipId !== lastAppliedDealershipId) {
+    setLastAppliedDealershipId(activeDealershipId);
+    setDealershipId(activeDealershipId);
+  }
 
   // Load preview once (public — no auth gate; token present). Anonymous users
   // must see the preview before being asked to sign in.

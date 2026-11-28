@@ -18,7 +18,6 @@
  *
  * `formatAdminDate` y la detección de expiración viven en admin-status.ts.
  */
-import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   formatAdminDate,
@@ -87,18 +86,15 @@ export function AdminEntityStatusBadge({
   entityType,
   entity,
 }: AdminEntityStatusBadgeProps) {
-  // "Ahora" estable por render (evita expirar a mitad de la interacción). El
-  // patrón es consistente con el repositorio (qr-transfer-panel expone un
-  // reloj con Date.now en state); la regla react-hooks/purity ya falla en la
-  // base existente.
-  const stableNow = useMemo(() => Date.now(), []);
-
+  // Los getters de admin-status ya resuelven el "ahora" por defecto, así que
+  // el badge no necesita capturar tiempo durante el render (ni un reloj en
+  // state). El helper es la única fuente de verdad de la precedencia.
   const state: AdminEntityStatusState =
     entityType === "user"
       ? getAdminUserStatusState(entity)
       : entityType === "dealership"
-        ? getAdminDealershipStatusState(entity, stableNow)
-        : getAdminWorkshopStatusState(entity, stableNow);
+        ? getAdminDealershipStatusState(entity)
+        : getAdminWorkshopStatusState(entity);
 
   let caption: string | null = null;
   if (state === "expired_pending" && entity.invitation?.expiresAt) {
