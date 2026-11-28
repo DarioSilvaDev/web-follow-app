@@ -117,7 +117,7 @@ export default function VehiclesPage() {
             type="search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Buscar por patente (ej. AAA111 o AA111AA)"
+            placeholder="Ej. AAA111 o AA111AA"
             maxLength={20}
             className="h-11 rounded-xl border-input bg-card pl-11 pr-12 text-base focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-12"
           />
@@ -136,7 +136,7 @@ export default function VehiclesPage() {
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Patente vieja AAA111 · patente nueva AA111AA
+          Ingrese dos digitos o más para filtrar por patente.
         </p>
       </div>
 
