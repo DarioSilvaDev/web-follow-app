@@ -556,6 +556,23 @@ export const usersApi = {
     lastName?: string;
     phone?: { areaCode?: string; nationalNumber?: string } | null;
   }) => api.patch("users/me", { json: input }).json<MyProfile>().catch(toApiError),
+
+  /**
+   * PATCH /users/me/tour-complete → marca un tour específico como visto.
+   * Body: { tourId: 'onboarding' | 'branch' | 'profile' | 'specialty' | 'careEpisode' }.
+   * El flag correspondiente persiste en BD.
+   */
+  completeTour: (tourId: string) =>
+    api
+      .patch("users/me/tour-complete", { json: { tourId } })
+      .json<{
+        hasSeenOnboarding: boolean;
+        hasSeenBranchTour: boolean;
+        hasSeenProfileTour: boolean;
+        hasSeenSpecialtyTour: boolean;
+        hasSeenCareEpisodeTour: boolean;
+      }>()
+      .catch(toApiError),
 };
 
 // ---------------------------------------------------------------------------
@@ -1130,15 +1147,30 @@ export const careEpisodeApi = {
       .json<CareEpisodeVerificationItem[]>()
       .catch(toApiError),
 
-  /** F-023 RF-1: GET /care-episodes → listado paginado del taller del contexto WORKSHOP (sin PII). Filtro único por patente `q` (D-F023-1a). */
+  /**
+   * F-023 RF-1: GET /care-episodes → listado paginado del taller del contexto
+   * WORKSHOP (sin PII). Filtro único por patente `q` (D-F023-1a).
+   * D-213: `signed: true` agrega de forma opt-in `vehicle.primaryPhoto`.
+   */
   listCareEpisodes: ({
     page = 1,
     limit = 20,
     q,
-  }: { page?: number; limit?: number; q?: string } = {}) =>
+    signed,
+  }: {
+    page?: number;
+    limit?: number;
+    q?: string;
+    signed?: boolean;
+  } = {}) =>
     api
       .get("care-episodes", {
-        searchParams: { page, limit, ...(q ? { q } : {}) },
+        searchParams: {
+          page,
+          limit,
+          ...(q ? { q } : {}),
+          ...(signed ? { signed: "true" } : {}),
+        },
       })
       .json<CareEpisodeListResponse>()
       .catch(toApiError),

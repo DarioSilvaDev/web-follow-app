@@ -30,11 +30,7 @@ vi.mock("next/navigation", () => ({
 
 // El Link real necesita router context → mock funcional (patrón del repo).
 vi.mock("next/link", () => ({
-  default: ({
-    children,
-    href,
-    ...props
-  }: React.ComponentProps<"a">) => (
+  default: ({ children, href, ...props }: React.ComponentProps<"a">) => (
     <a href={String(href)} {...props}>
       {children}
     </a>
@@ -88,7 +84,13 @@ vi.mock("@/components/ui/label", () => ({
 }));
 // Paginación mockeada como botones para poder ir a página 2 en tests.
 vi.mock("@/components/admin/admin-table-pagination", () => ({
-  AdminTablePagination: ({ page, onPageChange }: { page: number; onPageChange: (next: number) => void }) => (
+  AdminTablePagination: ({
+    page,
+    onPageChange,
+  }: {
+    page: number;
+    onPageChange: (next: number) => void;
+  }) => (
     <button type="button" onClick={() => onPageChange(page + 1)}>
       Ir a página {page + 1}
     </button>
@@ -163,13 +165,15 @@ describe("Atenciones page (F-023)", () => {
       await screen.findByText(/necesitás operar en el contexto de un taller/i),
     ).toBeInTheDocument();
     expect(mockListCareEpisodes).not.toHaveBeenCalled();
+    // El nav global (drawer/sidebar) reemplaza al back link del header.
+    expect(
+      screen.queryByRole("link", { name: "Volver al inicio" }),
+    ).not.toBeInTheDocument();
   });
 
   it("episodio rechazado → badge 'Rechazado' (destructive), NUNCA 'Registrado por el propietario'", async () => {
     mockListCareEpisodes.mockResolvedValue(
-      listResponse([
-        makeListItem({ verification: "rejected" }),
-      ]),
+      listResponse([makeListItem({ verification: "rejected" })]),
     );
     selectWorkshop("w1");
 
@@ -184,6 +188,9 @@ describe("Atenciones page (F-023)", () => {
       screen.queryByText("Registrado por el propietario"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Verificado")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Volver al inicio" }),
+    ).not.toBeInTheDocument();
   });
 
   it("episodio sin verificar / verificado mantienen su copy existente", async () => {
@@ -204,7 +211,25 @@ describe("Atenciones page (F-023)", () => {
     expect(screen.queryByText("Rechazado")).not.toBeInTheDocument();
   });
 
-  it("cada card linkea al detalle del episodio", async () => {
+  it("usa la misma tabla de 4 columnas que 'Atenciones recientes' y conserva km + verificación", async () => {
+    mockListCareEpisodes.mockResolvedValue(listResponse([makeListItem()]));
+    selectWorkshop("w1");
+
+    renderPage();
+
+    expect(await screen.findByText("Cambio de aceite")).toBeInTheDocument();
+    expect(screen.getByText("Vehículo")).toBeInTheDocument();
+    expect(screen.getByText("Servicio")).toBeInTheDocument();
+    expect(screen.getByText("Estado")).toBeInTheDocument();
+    expect(screen.getByText("Fecha")).toBeInTheDocument();
+    expect(screen.getByText("18.500 km")).toBeInTheDocument();
+    expect(
+      screen.getByText("Registrado por el propietario"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("ABC123")).toBeInTheDocument();
+  });
+
+  it("cada fila linkea al detalle del episodio", async () => {
     mockListCareEpisodes.mockResolvedValue(listResponse([makeListItem()]));
     selectWorkshop("w1");
 
@@ -236,17 +261,15 @@ async function settle() {
 }
 
 function searchInput() {
-  return screen.getByPlaceholderText(
-    "Buscar por patente (ej. AAA111 o AA111AA)",
-  );
+  // Por rol, no por placeholder: el copy del placeholder puede cambiar sin
+  // que eso altere el contrato del buscador (D-F023-1a).
+  return screen.getByRole("searchbox");
 }
 
 describe("Atenciones page — search (D-F023-1a)", () => {
   it("escribe 'SMK' → tras el debounce, listCareEpisodes se llama con { page: 1, limit: 20, q: 'SMK' }", async () => {
     vi.useFakeTimers();
-    mockListCareEpisodes.mockResolvedValue(
-      listResponse([makeListItem()]),
-    );
+    mockListCareEpisodes.mockResolvedValue(listResponse([makeListItem()]));
     selectWorkshop("w1");
 
     renderPage();
@@ -259,14 +282,65 @@ describe("Atenciones page — search (D-F023-1a)", () => {
       page: 1,
       limit: 20,
       q: "SMK",
+      signed: true,
     });
+  });
+
+  it("formatea mientras se escribe: 3.er carácter dígito → AA111AA", async () => {
+    vi.useFakeTimers();
+    mockListCareEpisodes.mockResolvedValue(listResponse([makeListItem()]));
+    selectWorkshop("w1");
+
+    renderPage();
+    await settle();
+
+    fireEvent.change(searchInput(), { target: { value: "fk123ab" } });
+    expect(searchInput()).toHaveValue("FK123AB");
+    await settle();
+
+    expect(mockListCareEpisodes).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      q: "FK123AB",
+      signed: true,
+    });
+  });
+
+  it("formatea mientras se escribe: 3.er carácter letra → AAA111", async () => {
+    vi.useFakeTimers();
+    mockListCareEpisodes.mockResolvedValue(listResponse([makeListItem()]));
+    selectWorkshop("w1");
+
+    renderPage();
+    await settle();
+
+    fireEvent.change(searchInput(), { target: { value: "fka123" } });
+    expect(searchInput()).toHaveValue("FKA123");
+    await settle();
+
+    expect(mockListCareEpisodes).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      q: "FKA123",
+      signed: true,
+    });
+  });
+
+  it("no muestra el hint 'Patente vieja / patente nueva'", async () => {
+    vi.useFakeTimers();
+    mockListCareEpisodes.mockResolvedValue(listResponse([makeListItem()]));
+    selectWorkshop("w1");
+
+    renderPage();
+    await settle();
+
+    expect(screen.queryByText(/Patente vieja/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/patente nueva/)).not.toBeInTheDocument();
   });
 
   it("con 1 carácter NO filtra: la llamada sale sin `q`", async () => {
     vi.useFakeTimers();
-    mockListCareEpisodes.mockResolvedValue(
-      listResponse([makeListItem()]),
-    );
+    mockListCareEpisodes.mockResolvedValue(listResponse([makeListItem()]));
     selectWorkshop("w1");
 
     renderPage();
@@ -278,6 +352,7 @@ describe("Atenciones page — search (D-F023-1a)", () => {
     expect(mockListCareEpisodes).toHaveBeenCalledWith({
       page: 1,
       limit: 20,
+      signed: true,
     });
     expect(mockListCareEpisodes).not.toHaveBeenCalledWith(
       expect.objectContaining({ q: expect.anything() }),
@@ -286,22 +361,20 @@ describe("Atenciones page — search (D-F023-1a)", () => {
 
   it("búsqueda sin resultados → EmptyState específico y 'Limpiar búsqueda' restaura el listado completo", async () => {
     vi.useFakeTimers();
-    mockListCareEpisodes.mockImplementation(
-      ({ q }: { q?: string } = {}) => {
-        if (q) {
-          return Promise.resolve({
-            data: [],
-            meta: { total: 0, page: 1, limit: 20, totalPages: 0 },
-          });
-        }
-        return Promise.resolve(
-          listResponse([
-            makeListItem({ id: "e1" }),
-            makeListItem({ id: "e2", vehicleId: "v2" }),
-          ]),
-        );
-      },
-    );
+    mockListCareEpisodes.mockImplementation(({ q }: { q?: string } = {}) => {
+      if (q) {
+        return Promise.resolve({
+          data: [],
+          meta: { total: 0, page: 1, limit: 20, totalPages: 0 },
+        });
+      }
+      return Promise.resolve(
+        listResponse([
+          makeListItem({ id: "e1" }),
+          makeListItem({ id: "e2", vehicleId: "v2" }),
+        ]),
+      );
+    });
     selectWorkshop("w1");
 
     renderPage();
@@ -327,6 +400,7 @@ describe("Atenciones page — search (D-F023-1a)", () => {
     expect(mockListCareEpisodes).toHaveBeenLastCalledWith({
       page: 1,
       limit: 20,
+      signed: true,
     });
   });
 
@@ -350,6 +424,7 @@ describe("Atenciones page — search (D-F023-1a)", () => {
     expect(mockListCareEpisodes).toHaveBeenLastCalledWith({
       page: 2,
       limit: 20,
+      signed: true,
     });
 
     fireEvent.change(searchInput(), { target: { value: "SMK" } });
@@ -359,14 +434,13 @@ describe("Atenciones page — search (D-F023-1a)", () => {
       page: 1,
       limit: 20,
       q: "SMK",
+      signed: true,
     });
   });
 
   it("Escape en el input limpia la búsqueda", async () => {
     vi.useFakeTimers();
-    mockListCareEpisodes.mockResolvedValue(
-      listResponse([makeListItem()]),
-    );
+    mockListCareEpisodes.mockResolvedValue(listResponse([makeListItem()]));
     selectWorkshop("w1");
 
     renderPage();
@@ -383,6 +457,7 @@ describe("Atenciones page — search (D-F023-1a)", () => {
     expect(mockListCareEpisodes).toHaveBeenLastCalledWith({
       page: 1,
       limit: 20,
+      signed: true,
     });
   });
 });

@@ -37,6 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { workshopApi } from "@/lib/api";
 import { resolveCreateBranchError } from "@/lib/workshop-errors";
+import { TourLauncher } from "@/components/onboarding/tour-launcher";
 import type { WorkshopDetail } from "@/types/workshop";
 
 const optionalText = (max: number, label: string) =>
@@ -148,6 +149,9 @@ export function WorkshopBranchesSection({
 
   return (
     <div className="flex flex-col gap-5">
+      <div className="flex justify-end">
+        <TourLauncher tourId="branch" label="Ver tutorial: Cargar sucursal" />
+      </div>
       {branches.length === 0 ? (
         <EmptyState
           icon={Building2}
@@ -197,7 +201,7 @@ export function WorkshopBranchesSection({
 
       {branches.length > 0 && !accessDenied && !showForm && (
         <div>
-          <Button type="button" variant="outline" onClick={() => setShowForm(true)}>
+          <Button type="button" variant="outline" onClick={() => setShowForm(true)} data-tour="workshop-btn-nueva-sucursal">
             Agregar sucursal
           </Button>
         </div>
@@ -214,6 +218,7 @@ export function WorkshopBranchesSection({
       {showForm && (
         <form
           onSubmit={onSubmit}
+          data-tour="workshop-form-sucursal"
           className="flex flex-col gap-4 rounded-lg border p-4"
           noValidate
         >

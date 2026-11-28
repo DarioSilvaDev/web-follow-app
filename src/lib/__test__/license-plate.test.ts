@@ -8,6 +8,7 @@ import { describe, it, expect } from "vitest";
 import {
   LICENSE_PLATE_FORMAT_ERROR,
   detectLicensePlateFormat,
+  formatLicensePlateInput,
   isValidLicensePlate,
   normalizeLicensePlate,
 } from "@/lib/license-plate";
@@ -88,6 +89,46 @@ describe("license-plate", () => {
     it("rejects a partial plate while typing (incomplete format)", () => {
       expect(isValidLicensePlate("AB1")).toBe(false);
       expect(isValidLicensePlate("ABC")).toBe(false);
+    });
+  });
+
+  describe("formatLicensePlateInput — formateo progresivo del buscador", () => {
+    it("fuerza MAYÚSCULAS y exige dos letras al inicio", () => {
+      expect(formatLicensePlateInput("fk")).toBe("FK");
+      expect(formatLicensePlateInput("f")).toBe("F");
+      // Los dígitos previos a las dos letras se descartan.
+      expect(formatLicensePlateInput("1f2k")).toBe("FK");
+    });
+
+    it("3.er carácter dígito → formato nuevo AA111AA", () => {
+      expect(formatLicensePlateInput("fk1")).toBe("FK1");
+      expect(formatLicensePlateInput("fk12")).toBe("FK12");
+      expect(formatLicensePlateInput("fk123ab")).toBe("FK123AB");
+    });
+
+    it("3.er carácter letra → formato viejo AAA111", () => {
+      expect(formatLicensePlateInput("fka")).toBe("FKA");
+      expect(formatLicensePlateInput("fka1")).toBe("FKA1");
+      expect(formatLicensePlateInput("fka123")).toBe("FKA123");
+    });
+
+    it("descarta caracteres fuera de orden y limita a 6", () => {
+      expect(formatLicensePlateInput("fk1a2b3")).toBe("FK123");
+      expect(formatLicensePlateInput("fka1b2c3")).toBe("FKA123");
+      expect(formatLicensePlateInput("fk123ab9")).toBe("FK123AB");
+      expect(formatLicensePlateInput("fka1234")).toBe("FKA123");
+    });
+
+    it("ignora caracteres inválidos (espacios, guiones, símbolos)", () => {
+      expect(formatLicensePlateInput("fk-123 ab!")).toBe("FK123AB");
+      expect(formatLicensePlateInput(" f k a 1 2 3 ")).toBe("FKA123");
+    });
+
+    it("es idempotente y produce una patente válida cuando está completa", () => {
+      for (const plate of ["FK123AB", "FKA123"]) {
+        expect(formatLicensePlateInput(plate)).toBe(plate);
+        expect(isValidLicensePlate(formatLicensePlateInput(plate))).toBe(true);
+      }
     });
   });
 

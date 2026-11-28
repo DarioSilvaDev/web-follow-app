@@ -5,9 +5,10 @@
  * drawer mobile.
  *
  * Navegación (config en `nav-config.ts`, decisiones PM de esta iteración):
- *   Inicio · Mis vehículos · Talleres · Concesionarias · Transferencias ·
- *   Administración · Mi perfil
- * - "Talleres" solo si `workshopMemberships.length > 0`;
+ *   Inicio · Mis vehículos · Mi taller/Talleres · Concesionarias ·
+ *   Transferencias · Administración · Mi perfil
+ * - "Mi taller" (1 membresía) o "Talleres" (≥2) si
+ *   `workshopMemberships.length > 0`;
  * - "Concesionarias" solo si `dealershipMemberships.length > 0`;
  * - "Administración" solo si `hasAdminAccess(user)` (workspace admin).
  * - NO hay items de Atenciones en el nav (F-023: son quick actions del
@@ -38,6 +39,8 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { AccountMenu } from "@/components/layout/account-menu";
 import { buildNavSections } from "@/components/layout/nav-config";
+import { OnboardingTourProvider } from "@/components/onboarding/onboarding-tour-provider";
+import "driver.js/dist/driver.css";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouteDerivedContext } from "@/hooks/use-route-derived-context";
 import { hasAdminAccess } from "@/lib/admin-access";
@@ -104,8 +107,17 @@ export default function DashboardLayout({
 
   // PM §29 (D-105): "Concesionarias" solo se renderiza cuando el usuario
   // tiene `dealershipMemberships` (datos de sesión — no permisos genéricos).
+  //
+  // Un solo taller ⇒ "Mi taller" apunta directo a `/workshops/<id>` (sin pasar
+  // por la lista). Varios ⇒ "Talleres" mantiene la lista como selector. No se
+  // infiere contexto de la membresía: la ruta explícita lo activa (D-021).
+  const workshopMemberships = user?.workshopMemberships ?? [];
+  const singleWorkshopId =
+    workshopMemberships.length === 1 ? workshopMemberships[0].workshopId : null;
+
   const sections = buildNavSections({
-    hasWorkshops: (user?.workshopMemberships?.length ?? 0) > 0,
+    hasWorkshops: workshopMemberships.length > 0,
+    singleWorkshopId,
     hasDealerships: (user?.dealershipMemberships?.length ?? 0) > 0,
     // Onboarding administrado de concesionaria: "Administración" (workspace
     // admin) solo para roles/permisos de plataforma (UX — el backend enforcea).
@@ -113,83 +125,85 @@ export default function DashboardLayout({
   });
 
   return (
-    <div
-      className="min-h-screen"
-      style={
-        isImpersonating
-          ? ({ "--impersonation-offset": "2.75rem" } as React.CSSProperties)
-          : undefined
-      }
-    >
-      {/* Sidebar desktop (≥ lg) — en mobile queda fuera del árbol de
-          accesibilidad vía `hidden`; su rol lo cumple el drawer. */}
-      <AppSidebar
-        sections={sections}
-        pathname={pathname}
-        initials={initials}
-        userName={userName}
-        onLogout={handleLogout}
-      />
+    <OnboardingTourProvider>
+      <div
+        className="min-h-screen"
+        style={
+          isImpersonating
+            ? ({ "--impersonation-offset": "2.75rem" } as React.CSSProperties)
+            : undefined
+        }
+      >
+        {/* Sidebar desktop (≥ lg) — en mobile queda fuera del árbol de
+            accesibilidad vía `hidden`; su rol lo cumple el drawer. */}
+        <AppSidebar
+          sections={sections}
+          pathname={pathname}
+          initials={initials}
+          userName={userName}
+          onLogout={handleLogout}
+        />
 
-      <div className="flex min-h-screen flex-col lg:pl-60">
-        {/* Banner global de impersonación (D-016): sticky, solo visible con
-            sesión impersonada. Va primero en la columna de contenido. */}
-        <ImpersonationBanner />
+        <div className="flex min-h-screen flex-col lg:pl-60">
+          {/* Banner global de impersonación (D-016): sticky, solo visible con
+              sesión impersonada. Va primero en la columna de contenido. */}
+          <ImpersonationBanner />
 
-        {/* Header compacto */}
-        <header className="sticky top-[var(--impersonation-offset,0px)] z-30 border-b border-border bg-background/95 backdrop-blur">
-          <div className="mx-auto flex h-14 w-full max-w-screen-xl items-center justify-between gap-3 px-4">
-            <div className="flex min-w-0 items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                id="mobile-nav-trigger"
-                onClick={() => setMobileOpen(!mobileOpen)}
-                className="h-11 w-11 shrink-0 lg:hidden"
-                aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
-                aria-expanded={mobileOpen}
-                aria-controls="mobile-nav-drawer"
-              >
-                {mobileOpen ? (
-                  <X className="h-5 w-5" aria-hidden="true" />
-                ) : (
-                  <Menu className="h-5 w-5" aria-hidden="true" />
-                )}
-              </Button>
-              {/* Marca en mobile: texto plano (el link "Autentia" vive en
-                  el sidebar; no se duplica el nombre accesible). */}
-              <span className="text-base font-bold tracking-tight lg:hidden">
-                Autentia
-              </span>
-              <ContextChip />
+          {/* Header compacto */}
+          <header className="sticky top-[var(--impersonation-offset,0px)] z-30 border-b border-border bg-background/95 backdrop-blur">
+            <div className="mx-auto flex h-14 w-full max-w-screen-xl items-center justify-between gap-3 px-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  id="mobile-nav-trigger"
+                  onClick={() => setMobileOpen(!mobileOpen)}
+                  className="h-11 w-11 shrink-0 lg:hidden"
+                  aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+                  aria-expanded={mobileOpen}
+                  aria-controls="mobile-nav-drawer"
+                >
+                  {mobileOpen ? (
+                    <X className="h-5 w-5" aria-hidden="true" />
+                  ) : (
+                    <Menu className="h-5 w-5" aria-hidden="true" />
+                  )}
+                </Button>
+                {/* Marca en mobile: texto plano (el link "Autentia" vive en
+                    el sidebar; no se duplica el nombre accesible). */}
+                <span className="text-base font-bold tracking-tight lg:hidden">
+                  Autentia
+                </span>
+                <ContextChip />
+              </div>
+
+              <AccountMenu
+                userName={userName}
+                initials={initials}
+                onLogout={handleLogout}
+              />
             </div>
+          </header>
 
-            <AccountMenu
-              userName={userName}
-              initials={initials}
-              onLogout={handleLogout}
-            />
-          </div>
-        </header>
+          <main className="flex-1 bg-muted/30">
+            <div className="mx-auto w-full max-w-screen-xl px-4 py-6">
+              {children}
+            </div>
+          </main>
+        </div>
 
-        <main className="flex-1 bg-muted/30">
-          <div className="mx-auto w-full max-w-screen-xl px-4 py-6">
-            {children}
-          </div>
-        </main>
+        {/* Drawer mobile — solo se monta cuando está abierto. */}
+        <MobileNavDrawer
+          open={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+          sections={sections}
+          pathname={pathname}
+          initials={initials}
+          userName={userName}
+          onLogout={handleLogout}
+        />
       </div>
-
-      {/* Drawer mobile — solo se monta cuando está abierto. */}
-      <MobileNavDrawer
-        open={mobileOpen}
-        onClose={() => setMobileOpen(false)}
-        sections={sections}
-        pathname={pathname}
-        initials={initials}
-        userName={userName}
-        onLogout={handleLogout}
-      />
-    </div>
+    </OnboardingTourProvider>
   );
 }

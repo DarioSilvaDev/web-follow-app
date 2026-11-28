@@ -275,7 +275,7 @@ function DashboardContent({ user }: { user: SessionUser }) {
               />
             </div>
           </div>
-        </>
+        </> 
       )}
     </div>
   );
