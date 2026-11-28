@@ -9,6 +9,16 @@ export interface SessionUser {
   status: string;
   isVehicleOwner: boolean;
   /**
+   * `hasSeenOnboarding` viene del backend (GET /auth/me) y persiste en BD.
+   * Opcional por compatibilidad con sesiones cacheadas viejas y tests; el
+   * dashboard usa `user.hasSeenOnboarding ?? false`.
+   */
+  hasSeenOnboarding?: boolean;
+  hasSeenBranchTour?: boolean;
+  hasSeenProfileTour?: boolean;
+  hasSeenSpecialtyTour?: boolean;
+  hasSeenCareEpisodeTour?: boolean;
+  /**
    * Celular E.164 (+54…) o null si no hay. `phoneAreaCode`/`phoneNationalNumber`
    * son los campos de display ('' = no informado); ausentes en sesiones
    * cacheadas viejas — tolerar con optional chaining (nunca parsear E.164).

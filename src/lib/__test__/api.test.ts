@@ -1314,6 +1314,58 @@ describe("API client — iteración 2-2 (owner service + verification)", () => {
     expect(queueCalls[0].method).toBe("GET");
   });
 
+  it("listCareEpisodes envía signed=true solo cuando se pide (D-213)", async () => {
+    fetchSpy.mockImplementation(async (input, init) => {
+      const { url, method } = extractFetchInfo(input, init);
+      capturedRequests.push({ url, method });
+      return makeResponse(200, {
+        data: [
+          {
+            id: "e1",
+            vehicleId: "v1",
+            title: "Cambio de aceite",
+            status: "delivered",
+            source: "owner",
+            verification: "unverified",
+            canonicalDate: "2026-11-26T12:00:00.000Z",
+            canonicalDateOnly: "2026-11-26",
+            mileageIn: 120000,
+            vehicle: {
+              licensePlate: "AB123CD",
+              brand: "Ford",
+              model: "Mustang",
+              manufactureYear: 2020,
+              primaryPhoto: {
+                url: "https://signed.example/main.webp",
+                expiresAt: "2026-11-28T05:03:13.388Z",
+              },
+            },
+          },
+        ],
+        meta: { total: 1, page: 1, limit: 5, totalPages: 1 },
+      });
+    });
+
+    const { careEpisodeApi } = await import("@/lib/api");
+    const signed = await careEpisodeApi.listCareEpisodes({
+      page: 1,
+      limit: 5,
+      signed: true,
+    });
+    await careEpisodeApi.listCareEpisodes({ page: 1, limit: 5 });
+
+    expect(signed.data[0].vehicle.primaryPhoto?.url).toBe(
+      "https://signed.example/main.webp",
+    );
+
+    const listCalls = capturedRequests.filter((r) =>
+      r.url.includes("/care-episodes?"),
+    );
+    expect(listCalls).toHaveLength(2);
+    expect(listCalls[0].url).toContain("signed=true");
+    expect(listCalls[1].url).not.toContain("signed=");
+  });
+
   it("verifyCareEpisode POSTs to /care-episodes/:id/verify", async () => {
     let requestBody: string | null = null;
     fetchSpy.mockImplementation(async (input, init) => {
